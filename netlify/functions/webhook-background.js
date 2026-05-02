@@ -93,7 +93,7 @@ async function generateResponse(phone, message) {
 }
 
 async function sendWhatsApp(phone, text) {
-  const response = await fetch("https://wasenderapi.com/api/send-text-message", {
+  const response = await fetch("https://www.wasenderapi.com/api/send-message", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.WASENDER_API_KEY}`,
