@@ -1,7 +1,5 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { createClient } = require("@supabase/supabase-js");
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -26,12 +24,6 @@ function randomDelay() {
   const max = parseInt(process.env.RESPONSE_DELAY_MAX || "15") * 1000;
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
-
-// WasenderAPI webhook formatı:
-// body.event = "messages.received"
-// body.data.messages.key.cleanedSenderPn = telefon numarası
-// body.data.messages.messageBody = mesaj metni
-// body.data.messages.key.fromMe = kendi mesajı mı
 
 function extractMessage(body) {
   if (body.data?.messages?.messageBody) return body.data.messages.messageBody;
@@ -60,24 +52,44 @@ async function getHistory(phone) {
     .order("created_at", { ascending: false })
     .limit(8);
 
-  if (!data || data.length === 0) return "";
+  if (!data || data.length === 0) return [];
 
-  return data
-    .reverse()
-    .map((h) => `Müşteri: ${h.customer_message}\nAsistan: ${h.bot_response}`)
-    .join("\n\n");
+  return data.reverse().map((h) => [
+    { role: "user", content: h.customer_message },
+    { role: "assistant", content: h.bot_response },
+  ]).flat();
 }
 
 async function generateResponse(phone, message) {
   const history = await getHistory(phone);
 
-  const prompt = history
-    ? `${SISTEM_PROMPT}\n\nGeçmiş konuşma:\n${history}\n\nMüşteri: ${message}\nAsistan:`
-    : `${SISTEM_PROMPT}\n\nMüşteri: ${message}\nAsistan:`;
+  const messages = [
+    { role: "system", content: SISTEM_PROMPT },
+    ...history,
+    { role: "user", content: message },
+  ];
 
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  const result = await model.generateContent(prompt);
-  return result.response.text().trim();
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: messages,
+      max_tokens: 300,
+      temperature: 0.7,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Groq hata: ${err}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content.trim();
 }
 
 async function sendWhatsApp(phone, text) {
@@ -117,7 +129,6 @@ exports.handler = async (event) => {
 
     const body = JSON.parse(event.body || "{}");
 
-    // Sadece gelen mesajları işle
     if (body.event && body.event !== "messages.received") {
       return { statusCode: 200, body: "ok" };
     }
@@ -140,7 +151,6 @@ exports.handler = async (event) => {
     console.log(`AI cevabı: ${botResponse}`);
 
     await sleep(randomDelay());
-
     await sendWhatsApp(phone, botResponse);
     await saveConversation(phone, message, botResponse);
 
