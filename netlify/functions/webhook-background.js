@@ -22,28 +22,34 @@ Asla emoji kullanma.`;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function randomDelay() {
-  const min = parseInt(process.env.RESPONSE_DELAY_MIN || "10") * 1000;
-  const max = parseInt(process.env.RESPONSE_DELAY_MAX || "40") * 1000;
+  const min = parseInt(process.env.RESPONSE_DELAY_MIN || "5") * 1000;
+  const max = parseInt(process.env.RESPONSE_DELAY_MAX || "15") * 1000;
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+// WasenderAPI webhook formatı:
+// body.event = "messages.received"
+// body.data.messages.key.cleanedSenderPn = telefon numarası
+// body.data.messages.messageBody = mesaj metni
+// body.data.messages.key.fromMe = kendi mesajı mı
+
 function extractMessage(body) {
-  // WasenderAPI webhook formatlarını destekle
+  if (body.data?.messages?.messageBody) return body.data.messages.messageBody;
+  if (body.data?.messages?.message?.conversation) return body.data.messages.message.conversation;
   if (body.message?.text) return body.message.text;
   if (body.text) return body.text;
-  if (body.body) return body.body;
-  if (body.data?.message?.text) return body.data.message.text;
   return null;
 }
 
 function extractPhone(body) {
-  if (body.from) return body.from;
+  if (body.data?.messages?.key?.cleanedSenderPn) return body.data.messages.key.cleanedSenderPn;
   if (body.data?.from) return body.data.from;
+  if (body.from) return body.from;
   return null;
 }
 
 function isOwnMessage(body) {
-  return body.fromMe === true || body.data?.fromMe === true;
+  return body.data?.messages?.key?.fromMe === true || body.fromMe === true;
 }
 
 async function getHistory(phone) {
@@ -75,14 +81,14 @@ async function generateResponse(phone, message) {
 }
 
 async function sendWhatsApp(phone, text) {
-  const response = await fetch("https://wasenderapi.com/api/send-message", {
+  const response = await fetch("https://wasenderapi.com/api/send-text-message", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.WASENDER_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      session_id: process.env.WASENDER_SESSION_ID,
+      sessionId: process.env.WASENDER_SESSION_ID,
       to: phone,
       text: text,
     }),
@@ -105,14 +111,17 @@ async function saveConversation(phone, customerMessage, botResponse) {
 
 exports.handler = async (event) => {
   try {
-    // Sadece POST kabul et
     if (event.httpMethod !== "POST") {
       return { statusCode: 200, body: "ok" };
     }
 
     const body = JSON.parse(event.body || "{}");
 
-    // Kendi mesajlarına cevap verme
+    // Sadece gelen mesajları işle
+    if (body.event && body.event !== "messages.received") {
+      return { statusCode: 200, body: "ok" };
+    }
+
     if (isOwnMessage(body)) {
       return { statusCode: 200, body: "ok" };
     }
@@ -127,17 +136,12 @@ exports.handler = async (event) => {
 
     console.log(`Mesaj alındı: ${phone} → ${message}`);
 
-    // AI cevabı üret
     const botResponse = await generateResponse(phone, message);
     console.log(`AI cevabı: ${botResponse}`);
 
-    // İnsan gibi görünmek için gecikme
     await sleep(randomDelay());
 
-    // WhatsApp'a gönder
     await sendWhatsApp(phone, botResponse);
-
-    // Veritabanına kaydet
     await saveConversation(phone, message, botResponse);
 
     console.log(`Cevap gönderildi: ${phone}`);
