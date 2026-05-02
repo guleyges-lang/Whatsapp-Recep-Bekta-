@@ -75,7 +75,7 @@ async function generateResponse(phone, message) {
     ? `${SISTEM_PROMPT}\n\nGeçmiş konuşma:\n${history}\n\nMüşteri: ${message}\nAsistan:`
     : `${SISTEM_PROMPT}\n\nMüşteri: ${message}\nAsistan:`;
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
   const result = await model.generateContent(prompt);
   return result.response.text().trim();
 }
