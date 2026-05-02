@@ -100,7 +100,6 @@ async function sendWhatsApp(phone, text) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      sessionId: process.env.WASENDER_SESSION_ID,
       to: phone,
       text: text,
     }),
