@@ -1,77 +1,75 @@
 const { createClient } = require("@supabase/supabase-js");
+const pdfMake = require("pdfmake/build/pdfmake");
+const pdfFonts = require("pdfmake/build/vfs_fonts");
+pdfMake.vfs = pdfFonts.pdfMake.vfs;
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// =====================================================================
-// BOT KİŞİLİK AYARLARI — buraya kendi işini yaz
-// =====================================================================
-const SISTEM_PROMPT = `Sen Güley Plastik'in WhatsApp satış asistanısın. Görevin müşterilere ürün satmak, fiyat teklifleri hazırlamak ve siparişe yönlendirmek. Türkçe yaz. Samimi, sıcak ama satış odaklı ol.
+function getSistemPrompt() {
+  const today = new Date().toLocaleDateString("tr-TR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+
+  return `Sen Güley Plastik'in WhatsApp satış asistanısın. Görevin müşterilere ürün satmak ve fiyat teklifleri hazırlamaktır.
+Türkçe yaz. Samimi, sıcak ama satış odaklı ol. Asla emoji kullanma.
+Bugünün tarihi: ${today}
 
 GÜLEY PLASTİK:
 - Kahramanmaraş Ekinözü'nde plastik elektrik malzemeleri imalatçısı
 - Adres: Anbar Ormandibi No1/10 Ekinözü/K.Maraş
-- Tel: +90 532 522 2876 | Web: www.guleyplastik.com
-- Tüm Türkiye'ye kargo | Fabrikadan direkt satış = en uygun fiyat
-- Teslimat: Ekinözü depo, araç plakası ile teslim
-- Ödeme: Nakit/havale (sipariş teyidinde peşin)
+- Tel: +90 537 363 06 08 | Web: www.guleyplastik.com
+- Tüm Türkiye'ye kargo | Fabrikadan direkt = en uygun fiyat
+- Ödeme: Nakit/havale peşin | Teslimat: Ekinözü depo (yüklü alımda yerine teslim)
 
-TÜM FİYATLAR %45 İNDİRİMLİ (KDV dahil liste fiyatı):
+ÜRÜNLERİMİZ (Liste Fiyatı → %45 indirimli Net Fiyat, KDV hariç):
+KANGAL BORU (MT):
+Siyah 6Atu: 14mm(4.26→2.34), 16mm(5.02→2.76), 18mm(5.80→3.19), 20mm(6.94→3.82), 25mm(10.78→5.93)
+Siyah 10Atu: 14mm(5.02→2.76), 16mm(5.82→3.20), 18mm(6.58→3.62), 20mm(8.22→4.52), 25mm(11.30→6.22)
+Turuncu 6Atu: 14mm(4.52→2.49), 16mm(5.34→2.94), 18mm(6.16→3.39), 20mm(7.16→3.94), 25mm(11.46→6.30)
+Turuncu 10Atu: 14mm(5.34→2.94), 16mm(6.18→3.40), 18mm(6.84→3.76), 20mm(8.54→4.70), 25mm(11.72→6.45)
+Mavi 6Atu: 14mm(4.42→2.43), 16mm(5.22→2.87), 18mm(6.02→3.31), 20mm(7.20→3.96), 25mm(11.20→6.16)
+Mavi 10Atu: 14mm(5.22→2.87), 16mm(6.04→3.32), 18mm(6.84→3.76), 20mm(8.54→4.70), 25mm(11.72→6.45)
+BUAT ve KASALAR (AD):
+Kapakli Kare Buat: 80x80(10.00→5.50), 100x100(13.00→7.15), 120x120(14.00→7.70), 150x150(17.00→9.35), 200x200(28.00→15.40)
+Kapaksiz Kare Buat: 80x80(8.00→4.40), 100x100(9.00→4.95), 120x120(10.60→5.83), 150x150(13.60→7.48), 200x200(20.40→11.22)
+Kare Buat Kapagi: 80x80(4.20→2.31), 100x100(4.70→2.59), 120x120(5.80→3.19), 150x150(6.40→3.52), 200x200(16.00→8.80)
+Bombeli Luks Buat(2.60→1.43), Gecmeli Derin Kasa(2.70→1.49), Norm Buat(4.60→2.53), Tunel Beton Buat(6.00→3.30)
+Norm Kasa(2.50→1.38), Plastik Takoz(4.00→2.20), Sekizlik Dubel(0.18→0.10)
+1-2 li Sigorta Kutusu(15.20→8.36), Plastik Tij Duy(15.00→8.25), Plastik Duy(18.00→9.90)
 
-KANGAL BORU (mt fiyatı):
-Siyah: 14mm 6Atu=2.34, 16mm 6Atu=2.76, 18mm 6Atu=3.19, 20mm 6Atu=3.82, 25mm 6Atu=5.93
-Siyah 10Atu: 14mm=2.76, 16mm=3.20, 18mm=3.62, 20mm=4.52, 25mm=6.22
-Turuncu: 14mm 6Atu=2.49, 16mm 6Atu=2.94, 18mm 6Atu=3.39, 20mm 6Atu=3.94, 25mm 6Atu=6.30
-Turuncu 10Atu: 14mm=2.94, 16mm=3.40, 18mm=3.76, 20mm=4.70, 25mm=6.45
-Mavi: 14mm 6Atu=2.43, 16mm 6Atu=2.87, 18mm 6Atu=3.31, 20mm 6Atu=3.96, 25mm 6Atu=6.16
-Mavi 10Atu: 14mm=2.87, 16mm=3.32, 18mm=3.76, 20mm=4.70, 25mm=6.45
+KONUSMA AKISI:
+1. Yeni musteri (konusma gecmisi yoksa): "Merhaba! Guley Plastik'e hos geldiniz. Fiyat teklifini kimin adina hazirlayalim, firma adiniz nedir?"
+2. Musteri firma adini verdikten sonra urunleri ve miktarlari sor ya da gelen soruyu cevapla.
+3. Musteri urun ve miktar belirttiginde fiyat teklifi hazirla.
 
-BUAT ve KASALAR (adet fiyatı):
-Kapaklı Kare Buat: 80x80=5.50, 100x100=7.15, 120x120=7.70, 150x150=9.35, 200x200=15.40 TL/ad
-Kapaksız Kare Buat: 80x80=4.40, 100x100=4.95, 120x120=5.83, 150x150=7.48, 200x200=11.22 TL/ad
-Kare Buat Kapağı: 80x80=2.31, 100x100=2.59, 120x120=3.19, 150x150=3.52, 200x200=8.80 TL/ad
-Geçmeli Derin Kasa: 1.49 TL/ad
-Norm Buat: 2.53 TL/ad
-Tünel Beton Buat: 3.30 TL/ad
-Lüx Buat: 1.43 TL/ad
-Norm Kasa: 1.38 TL/ad
-Plastik Takoz: 2.20 TL/ad
-Sekiz Dübel: 0.10 TL/ad
-1-2'li Sigorta Kutusu: 8.36 TL/ad
-Plastik Duy: 9.90 TL/ad
+FIYAT TEKLIFI KURALLARI:
+- SADECE musterinin istedigi urunler icin teklif ver
+- Fiyat teklifi hazirlarken ONCE su yapılandırılmış bloku yaz (bu musteriye gosterilmez, PDF olusturmak icin kullanilir):
 
-FİYAT TEKLİFİ KURALLARI:
-- SADECE müşterinin sorduğu ürünler için teklif ver, tüm listeyi yazma
-- Müşteri miktar belirtirse toplam tutarı hesapla (adet × birim fiyat)
-- Müşteri miktar belirtmezse birim fiyat ver ve miktar sor
-- Fiyat teklifini şu formatta yaz:
+[TEKLIF]
+FIRMA:Firma adi
+KALEM:Urun adi|Miktar|Birim|ListeFiyati|NetFiyat|Toplam
+[/TEKLIF]
 
---- GÜLEY PLASTİK FİYAT TEKLİFİ ---
-[Ürün adı] [miktar] [birim]: [birim fiyat] TL x [miktar] = [toplam] TL
-...
-TOPLAM (KDV Hariç): [X] TL
-Geçerlilik: 3 gün
-Teslimat: Ekinözü/K.Maraş depo
-Tel: +90 532 522 2876
----
+Sonra kisa bir mesaj yaz: "Fiyat teklifinizi hazirladim, PDF olarak gonderiyorum."
 
-SATIŞ TAKTİKLERİ:
-- "Fabrikadan direkt" ve "toptancı fiyatı" vurgusunu her fırsatta yap
-- Müşteri kararsızsa: "Stoklar sınırlı" veya "Bu hafta sipariş verin" gibi teşvik et
-- Toplu alımlarda ekstra indirim olabileceğini ima et
-- Siparişi kapatmak için: "Miktarı bildirin, hemen hazırlayalım"
-- Kargo için: "Araç plakanızı bildirirseniz depodan teslim ederiz"
-- Asla emoji kullanma`;
-
-// =====================================================================
+SATIS KURALLARI:
+- Fabrikadan direkt toptan fiyati vurgusunu yap
+- Stok sinirli oldugunu ima et
+- Toplu alimda ek indirim ima et
+- Siparis icin havale + arac plakasi iste`;
+}
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function randomDelay() {
-  const min = parseInt(process.env.RESPONSE_DELAY_MIN || "5") * 1000;
-  const max = parseInt(process.env.RESPONSE_DELAY_MAX || "15") * 1000;
+  const min = parseInt(process.env.RESPONSE_DELAY_MIN || "10") * 1000;
+  const max = parseInt(process.env.RESPONSE_DELAY_MAX || "40") * 1000;
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
@@ -103,110 +101,324 @@ async function getHistory(phone) {
     .limit(8);
 
   if (!data || data.length === 0) return [];
-
-  return data.reverse().map((h) => [
+  return data.reverse().flatMap((h) => [
     { role: "user", content: h.customer_message },
     { role: "assistant", content: h.bot_response },
-  ]).flat();
+  ]);
+}
+
+function parseQuote(text) {
+  const match = text.match(/\[TEKLIF\]([\s\S]*?)\[\/TEKLIF\]/);
+  if (!match) return null;
+
+  const lines = match[1].trim().split("\n").map((l) => l.trim()).filter(Boolean);
+  const data = { firma: "Musteri", items: [] };
+
+  for (const line of lines) {
+    if (line.startsWith("FIRMA:")) {
+      data.firma = line.slice(6).trim();
+    } else if (line.startsWith("KALEM:")) {
+      const parts = line.slice(6).split("|");
+      if (parts.length >= 6) {
+        const qty = parseFloat(parts[1]) || 0;
+        const listPrice = parseFloat(parts[3]) || 0;
+        const netPrice = parseFloat(parts[4]) || 0;
+        const total = Math.round(qty * netPrice * 100) / 100;
+        data.items.push({ name: parts[0].trim(), qty, unit: parts[2].trim(), listPrice, netPrice, total });
+      }
+    }
+  }
+  return data.items.length > 0 ? data : null;
+}
+
+function fmtNum(n) {
+  const [intPart, decPart] = n.toFixed(2).split(".");
+  return intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "," + decPart;
+}
+
+async function generatePDF(quoteData, quoteNumber, tarih) {
+  return new Promise((resolve, reject) => {
+    const kdvHaric = Math.round(quoteData.items.reduce((s, i) => s + i.total, 0) * 100) / 100;
+    const kdvTutar = Math.round(kdvHaric * 0.2 * 100) / 100;
+    const genelToplam = Math.round((kdvHaric + kdvTutar) * 100) / 100;
+
+    const th = { fontSize: 8, bold: true, fillColor: "#eeeeee" };
+    const tableBody = [
+      [
+        { text: "Sira", ...th, alignment: "center" },
+        { text: "Malzeme Adi", ...th },
+        { text: "Miktar", ...th, alignment: "right" },
+        { text: "Birim", ...th, alignment: "center" },
+        { text: "Liste Fiyati", ...th, alignment: "right" },
+        { text: "Iskonto", ...th, alignment: "center" },
+        { text: "Net Fiyat", ...th, alignment: "right" },
+        { text: "Toplam Fiyat", ...th, alignment: "right" },
+      ],
+      ...quoteData.items.map((item, idx) => [
+        { text: String(idx + 1), fontSize: 8, alignment: "center" },
+        { text: item.name, fontSize: 8 },
+        { text: String(item.qty), fontSize: 8, alignment: "right" },
+        { text: item.unit, fontSize: 8, alignment: "center" },
+        { text: fmtNum(item.listPrice), fontSize: 8, alignment: "right" },
+        { text: "45,00%", fontSize: 8, alignment: "center" },
+        { text: fmtNum(item.netPrice), fontSize: 8, alignment: "right" },
+        { text: "TL" + fmtNum(item.total), fontSize: 8, alignment: "right" },
+      ]),
+    ];
+
+    const docDef = {
+      pageSize: "A4",
+      pageMargins: [40, 40, 40, 40],
+      content: [
+        {
+          columns: [
+            {
+              stack: [
+                { text: "GULEY PLASTIK", bold: true, fontSize: 20, color: "#1a6b3c" },
+                { text: "SAN.TIC.LTD.STI", fontSize: 8, color: "#1a6b3c" },
+              ],
+              width: 200,
+            },
+            { width: "*", text: "" },
+            {
+              stack: [
+                { text: "GULEY PLASTIK SAN.TIC.LTD. STI", bold: true, fontSize: 9 },
+                { text: "Anbar Ormandibi No1/10 Ekinozu/K.maras", fontSize: 8 },
+                { text: "Elbistan V.D:4110898", fontSize: 8 },
+                { text: "www.guleyplastik.com", fontSize: 8 },
+                { text: "info@guleyplastik.com", fontSize: 8 },
+              ],
+              alignment: "right",
+            },
+          ],
+          marginBottom: 8,
+        },
+        {
+          canvas: [{ type: "line", x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: "#999" }],
+          marginBottom: 8,
+        },
+        {
+          columns: [
+            {
+              stack: [
+                { text: "TEKLIF TARIHI VE NUMARASI", bold: true, fontSize: 8.5, lineHeight: 1.7 },
+                { text: "FIRMA ADI", bold: true, fontSize: 8.5, lineHeight: 1.7 },
+                { text: "FIRMA YETKILISI", bold: true, fontSize: 8.5, lineHeight: 1.7 },
+                { text: "TEKLIFI HAZIRLAYAN", bold: true, fontSize: 8.5, lineHeight: 1.7 },
+                { text: "EMAIL", bold: true, fontSize: 8.5, lineHeight: 1.7 },
+              ],
+              width: 160,
+            },
+            {
+              stack: [
+                { text: ": " + tarih + " - " + quoteNumber, fontSize: 8.5, lineHeight: 1.7 },
+                { text: ": " + quoteData.firma, fontSize: 8.5, lineHeight: 1.7 },
+                { text: ": GULEY PLASTIK", fontSize: 8.5, lineHeight: 1.7 },
+                { text: ": RECEP BEKTAS", fontSize: 8.5, lineHeight: 1.7 },
+                { text: ":recepbektas@hotmail.com.tr", fontSize: 8.5, lineHeight: 1.7 },
+              ],
+              width: "*",
+            },
+          ],
+          marginBottom: 12,
+        },
+        {
+          table: {
+            headerRows: 1,
+            widths: [20, "*", 40, 28, 52, 43, 50, 65],
+            body: tableBody,
+          },
+          layout: {
+            hLineWidth: () => 0.5,
+            vLineWidth: () => 0.5,
+            hLineColor: () => "#444",
+            vLineColor: () => "#444",
+            paddingLeft: () => 3,
+            paddingRight: () => 3,
+            paddingTop: () => 3,
+            paddingBottom: () => 3,
+          },
+          marginBottom: 5,
+        },
+        {
+          columns: [
+            { width: "*", text: "" },
+            {
+              table: {
+                widths: [130, 85],
+                body: [
+                  [
+                    { text: "KDV'siz Toplam Tutar", fontSize: 8.5 },
+                    { text: "TL" + fmtNum(kdvHaric), fontSize: 8.5, alignment: "right" },
+                  ],
+                  [
+                    { text: "KDV Tutari ( 20% )", fontSize: 8.5 },
+                    { text: fmtNum(kdvTutar), fontSize: 8.5, alignment: "right" },
+                  ],
+                  [
+                    { text: "Genel Toplam", fontSize: 8.5, bold: true },
+                    { text: fmtNum(genelToplam), fontSize: 8.5, alignment: "right", bold: true },
+                  ],
+                ],
+              },
+              layout: {
+                hLineWidth: () => 0.5,
+                vLineWidth: () => 0.5,
+                hLineColor: () => "#444",
+                vLineColor: () => "#444",
+                paddingLeft: () => 5,
+                paddingRight: () => 5,
+                paddingTop: () => 3,
+                paddingBottom: () => 3,
+              },
+            },
+          ],
+          marginBottom: 15,
+        },
+        {
+          stack: [
+            { text: "Siparis teyidinde nakit havale ile odenecektir. Odemesi alinmamis siparislerin iptal hakki firmamiza aittir.", fontSize: 8, decoration: "underline", lineHeight: 1.6 },
+            { text: "Teslimat Sekli: Ekinozu/K.maras depomuz teslimidir. Yuklu alimlarda yerine teslim yapilir.", fontSize: 8, decoration: "underline", lineHeight: 1.6 },
+            { text: "Opsiyon: Fiyat teklifimiz 3 gun gecerlidir.", fontSize: 8, lineHeight: 1.6 },
+            { text: "Teklif Butunlugu: Teklifimiz butun olarak gecerlidir.", fontSize: 8, lineHeight: 1.6 },
+          ],
+        },
+      ],
+      defaultStyle: { font: "Roboto" },
+    };
+
+    pdfMake.createPdf(docDef).getBuffer((buffer) => {
+      resolve(Buffer.from(buffer));
+    });
+  });
+}
+
+async function getNextQuoteNumber() {
+  try {
+    const { count } = await supabase
+      .from("quotes")
+      .select("*", { count: "exact", head: true });
+    return (count || 0) + 1;
+  } catch {
+    return Math.floor(Date.now() % 9000) + 1000;
+  }
+}
+
+async function uploadPDF(buffer, filename) {
+  const { error } = await supabase.storage
+    .from("quotes")
+    .upload(filename, buffer, { contentType: "application/pdf", upsert: true });
+  if (error) throw new Error("Storage: " + error.message);
+  const { data } = supabase.storage.from("quotes").getPublicUrl(filename);
+  return data.publicUrl;
+}
+
+async function saveQuote(phone, firma, total, pdfUrl) {
+  try {
+    await supabase.from("quotes").insert({ phone, firma, total_amount: total, pdf_url: pdfUrl });
+  } catch {
+    // quotes tablosu henuz yoksa sessizce gec
+  }
+}
+
+async function sendDocument(phone, pdfUrl, filename) {
+  const res = await fetch("https://www.wasenderapi.com/api/send-message", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + process.env.WASENDER_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ to: phone, documentUrl: pdfUrl, fileName: filename, text: "Fiyat teklifiniz ektedir." }),
+  });
+  if (!res.ok) throw new Error("WasenderAPI belge: " + res.status);
 }
 
 async function generateResponse(phone, message) {
   const history = await getHistory(phone);
-
   const messages = [
-    { role: "system", content: SISTEM_PROMPT },
+    { role: "system", content: getSistemPrompt() },
     ...history,
     { role: "user", content: message },
   ];
 
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      Authorization: "Bearer " + process.env.GROQ_API_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: messages,
-      max_tokens: 600,
-      temperature: 0.7,
-    }),
+    body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages, max_tokens: 800, temperature: 0.7 }),
   });
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Groq hata: ${err}`);
-  }
-
-  const data = await response.json();
+  if (!res.ok) throw new Error("Groq: " + await res.text());
+  const data = await res.json();
   return data.choices[0].message.content.trim();
 }
 
 async function sendWhatsApp(phone, text) {
-  const response = await fetch("https://www.wasenderapi.com/api/send-message", {
+  const res = await fetch("https://www.wasenderapi.com/api/send-message", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.WASENDER_API_KEY}`,
+      Authorization: "Bearer " + process.env.WASENDER_API_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      to: phone,
-      text: text,
-    }),
+    body: JSON.stringify({ to: phone, text }),
   });
-
-  if (!response.ok) {
-    const err = await response.text();
-    console.error("WasenderAPI hata:", err);
-    throw new Error(`WasenderAPI: ${response.status}`);
-  }
+  if (!res.ok) throw new Error("WasenderAPI: " + res.status);
 }
 
 async function saveConversation(phone, customerMessage, botResponse) {
-  await supabase.from("conversations").insert({
-    phone,
-    customer_message: customerMessage,
-    bot_response: botResponse,
-  });
+  await supabase.from("conversations").insert({ phone, customer_message: customerMessage, bot_response: botResponse });
 }
 
 exports.handler = async (event) => {
   try {
-    if (event.httpMethod !== "POST") {
-      return { statusCode: 200, body: "ok" };
-    }
+    if (event.httpMethod !== "POST") return { statusCode: 200, body: "ok" };
 
     const body = JSON.parse(event.body || "{}");
-
-    if (body.event && body.event !== "messages.received") {
-      return { statusCode: 200, body: "ok" };
-    }
-
-    if (isOwnMessage(body)) {
-      return { statusCode: 200, body: "ok" };
-    }
+    if (body.event && body.event !== "messages.received") return { statusCode: 200, body: "ok" };
+    if (isOwnMessage(body)) return { statusCode: 200, body: "ok" };
 
     const phone = extractPhone(body);
     const message = extractMessage(body);
-
     if (!phone || !message) {
-      console.log("Mesaj veya telefon bulunamadı:", JSON.stringify(body));
+      console.log("Mesaj/telefon bulunamadi:", JSON.stringify(body));
       return { statusCode: 200, body: "ok" };
     }
 
-    console.log(`Mesaj alındı: ${phone} → ${message}`);
-
+    console.log("Mesaj: " + phone + " -> " + message);
     const botResponse = await generateResponse(phone, message);
-    console.log(`AI cevabı: ${botResponse}`);
+    console.log("AI: " + botResponse);
 
     await sleep(randomDelay());
-    await sendWhatsApp(phone, botResponse);
-    await saveConversation(phone, message, botResponse);
 
-    console.log(`Cevap gönderildi: ${phone}`);
+    const quoteData = parseQuote(botResponse);
+    const cleanText = botResponse.replace(/\[TEKLIF\][\s\S]*?\[\/TEKLIF\]/g, "").trim();
+
+    if (quoteData) {
+      try {
+        const tarih = new Date().toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" });
+        const quoteNumber = await getNextQuoteNumber();
+        const pdfBuffer = await generatePDF(quoteData, quoteNumber, tarih);
+        const filename = "Fiyat_Teklifimiz_" + tarih.replace(/\./g, "") + "_" + quoteNumber + ".pdf";
+        const pdfUrl = await uploadPDF(pdfBuffer, filename);
+        await saveQuote(phone, quoteData.firma, quoteData.items.reduce((s, i) => s + i.total, 0), pdfUrl);
+        await sendDocument(phone, pdfUrl, filename);
+        await saveConversation(phone, message, cleanText);
+        console.log("PDF gonderildi: " + phone);
+      } catch (pdfErr) {
+        console.error("PDF hatasi:", pdfErr.message);
+        await sendWhatsApp(phone, cleanText || "Fiyat teklifinizi hazirladim. Detaylar icin arayin: +90 537 363 06 08");
+        await saveConversation(phone, message, cleanText);
+      }
+    } else {
+      await sendWhatsApp(phone, cleanText);
+      await saveConversation(phone, message, cleanText);
+    }
+
     return { statusCode: 200, body: "ok" };
   } catch (error) {
-    console.error("Webhook hatası:", error.message);
+    console.error("Webhook hatasi:", error.message);
     return { statusCode: 200, body: "ok" };
   }
 };

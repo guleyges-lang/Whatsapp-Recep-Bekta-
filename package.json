@@ -1,9 +1,9 @@
 {
   "name": "whatsapp-ai-bot",
   "version": "1.0.0",
-  "description": "WhatsApp AI Bot - Recep Bektaş",
+  "description": "WhatsApp AI Bot - Güley Plastik",
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "pdfmake": "^0.2.9"
   }
 }
