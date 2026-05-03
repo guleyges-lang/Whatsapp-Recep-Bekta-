@@ -45,9 +45,10 @@ Norm Kasa(2.50→1.38), Plastik Takoz(4.00→2.20), Sekizlik Dubel(0.18→0.10)
 1-2 li Sigorta Kutusu(15.20→8.36), Plastik Tij Duy(15.00→8.25), Plastik Duy(18.00→9.90)
 
 KONUSMA AKISI:
-1. Yeni musteri (konusma gecmisi yoksa): "Merhaba! Guley Plastik'e hos geldiniz. Fiyat teklifini kimin adina hazirlayalim, firma adiniz nedir?"
+1. Yeni musteri (konusma gecmisi yoksa) ya da musteri urunler/katalog hakkinda bilgi istediginde: once [KATALOG] yaz, sonra su mesaji yaz: "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin."
 2. Musteri firma adini verdikten sonra urunleri ve miktarlari sor ya da gelen soruyu cevapla.
 3. Musteri urun ve miktar belirttiginde fiyat teklifi hazirla.
+4. [KATALOG] isaretini SADECE musteri ilk kez yazdiginda veya katalog/urun bilgisi istediginde kullan. Her mesajda kullanma.
 
 FIYAT TEKLIFI KURALLARI:
 - SADECE musterinin istedigi urunler icin teklif ver
@@ -323,6 +324,23 @@ async function saveQuote(phone, firma, total, pdfUrl) {
   }
 }
 
+const KATALOG_URLS = [
+  "https://nwhuoyzezgrsilvwjohu.supabase.co/storage/v1/object/public/katalog/borular.jpg",
+  "https://nwhuoyzezgrsilvwjohu.supabase.co/storage/v1/object/public/katalog/kasa_buat.jpg",
+];
+
+async function sendImage(phone, imageUrl, caption) {
+  const res = await fetch("https://www.wasenderapi.com/api/send-message", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + process.env.WASENDER_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ to: phone, imageUrl, caption: caption || "" }),
+  });
+  if (!res.ok) console.error("Resim gonderme hatasi: " + res.status);
+}
+
 async function sendDocument(phone, pdfUrl, filename) {
   const res = await fetch("https://www.wasenderapi.com/api/send-message", {
     method: "POST",
@@ -394,8 +412,19 @@ exports.handler = async (event) => {
 
     await sleep(randomDelay());
 
+    const sendKatalog = botResponse.includes("[KATALOG]");
     const quoteData = parseQuote(botResponse);
-    const cleanText = botResponse.replace(/\[TEKLIF\][\s\S]*?\[\/TEKLIF\]/g, "").trim();
+    const cleanText = botResponse
+      .replace(/\[KATALOG\]/g, "")
+      .replace(/\[TEKLIF\][\s\S]*?\[\/TEKLIF\]/g, "")
+      .trim();
+
+    if (sendKatalog) {
+      for (const url of KATALOG_URLS) {
+        await sendImage(phone, url);
+        await sleep(1500);
+      }
+    }
 
     if (quoteData) {
       try {
@@ -414,7 +443,7 @@ exports.handler = async (event) => {
         await saveConversation(phone, message, cleanText);
       }
     } else {
-      await sendWhatsApp(phone, cleanText);
+      if (cleanText) await sendWhatsApp(phone, cleanText);
       await saveConversation(phone, message, cleanText);
     }
 
