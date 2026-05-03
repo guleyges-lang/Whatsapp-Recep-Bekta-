@@ -438,9 +438,13 @@ exports.handler = async (event) => {
       botResponse = await generateResponse(phone, message);
     } catch (aiErr) {
       console.error("AI hatasi:", aiErr.message);
-      await sleep(5000);
+      await sleep(randomDelay());
+      for (const url of KATALOG_URLS) {
+        try { await sendImage(phone, url); } catch (e) { console.error("Gorsel hatasi:", e.message); }
+        await sleep(8000);
+      }
       try {
-        await sendWhatsApp(phone, "Mesajinizi aldik, en kisa surede size donecegiz. Acil durumlar icin: +90 537 363 06 08");
+        await sendWhatsApp(phone, "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin.");
       } catch {}
       return { statusCode: 200, body: "ok" };
     }
