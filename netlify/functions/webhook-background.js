@@ -1,7 +1,9 @@
 const { createClient } = require("@supabase/supabase-js");
 const pdfMake = require("pdfmake/build/pdfmake");
-const pdfFonts = require("pdfmake/build/vfs_fonts");
-pdfMake.vfs = pdfFonts.pdfMake.vfs;
+require("pdfmake/build/vfs_fonts");
+if (global.pdfMake && global.pdfMake.vfs) {
+  pdfMake.vfs = global.pdfMake.vfs;
+}
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
