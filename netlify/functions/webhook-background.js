@@ -420,10 +420,14 @@ exports.handler = async (event) => {
       return { statusCode: 200, body: "ok" };
     }
     if (!message) {
-      console.log("Metin yok (gorsel/ses/belge olabilir), genel cevap gonderiliyor:", phone);
+      console.log("Metin yok (gorsel/ses/belge), katalog + karsilama gonderiliyor:", phone);
       await sleep(randomDelay());
+      for (const url of KATALOG_URLS) {
+        try { await sendImage(phone, url); } catch (e) { console.error("Gorsel hatasi:", e.message); }
+        await sleep(8000);
+      }
       try {
-        await sendWhatsApp(phone, "Merhaba! Guley Plastik olarak size yardimci olmaktan mutluluk duyariz. Lutfen ihtiyacinizi yazi olarak belirtin, size en kisa surede donelim.");
+        await sendWhatsApp(phone, "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin.");
       } catch {}
       return { statusCode: 200, body: "ok" };
     }
