@@ -45,10 +45,16 @@ Norm Kasa(2.50→1.38), Plastik Takoz(4.00→2.20), Sekizlik Dubel(0.18→0.10)
 1-2 li Sigorta Kutusu(15.20→8.36), Plastik Tij Duy(15.00→8.25), Plastik Duy(18.00→9.90)
 
 KONUSMA AKISI:
-1. Yeni musteri (konusma gecmisi yoksa) ya da musteri urunler/katalog hakkinda bilgi istediginde: once [KATALOG] yaz, sonra su mesaji yaz: "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin."
+1. Yeni musteri (konusma gecmisi yoksa) ya da musteri urunler/katalog hakkinda bilgi istediginde:
+   - Yanitinin EN BASINA tam olarak su 9 karakteri yaz: [KATALOG]
+   - Ardindan hemen su karsilama mesajini yaz (fiyat hesaplama YAPMA, sadece bu metni yaz):
+     "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin."
+   - ORNEK dogru cikti: [KATALOG]Merhaba! Guley Plastik'e hos geldiniz...
+   - YANLIS cikti ornekleri: "KATALOG Merhaba...", "[ KATALOG ] Merhaba...", fiyat hesabi eklemek
 2. Musteri firma adini verdikten sonra urunleri ve miktarlari sor ya da gelen soruyu cevapla.
 3. Musteri urun ve miktar belirttiginde fiyat teklifi hazirla.
 4. [KATALOG] isaretini SADECE musteri ilk kez yazdiginda veya katalog/urun bilgisi istediginde kullan. Her mesajda kullanma.
+5. Karsilama mesajina ASLA fiyat hesabi, urun miktari veya toplam tutar ekleme.
 
 FIYAT TEKLIFI KURALLARI:
 - SADECE musterinin istedigi urunler icin teklif ver
@@ -413,10 +419,10 @@ exports.handler = async (event) => {
 
     await sleep(randomDelay());
 
-    const sendKatalog = botResponse.includes("[KATALOG]");
+    const sendKatalog = /\[KATALOG\]|\bKATALOG\b/.test(botResponse);
     const quoteData = parseQuote(botResponse);
     const cleanText = botResponse
-      .replace(/\[KATALOG\]/g, "")
+      .replace(/\[?KATALOG\]?/g, "")
       .replace(/\[TEKLIF\][\s\S]*?\[\/TEKLIF\]/g, "")
       .trim();
 
