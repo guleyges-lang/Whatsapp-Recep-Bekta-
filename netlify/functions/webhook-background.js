@@ -489,7 +489,8 @@ async function generateResponse(phone, message) {
     { role: "user", content: message },
   ];
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  const delays = [3000, 7000, 15000];
+  for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -506,7 +507,7 @@ async function generateResponse(phone, message) {
 
     const errText = await res.text();
     console.error(`Groq deneme ${attempt + 1} basarisiz: ${res.status} ${errText.slice(0, 100)}`);
-    if (attempt === 0) await sleep(4000);
+    if (attempt < 2) await sleep(delays[attempt]);
     else throw new Error("Groq: " + errText);
   }
 }
@@ -538,9 +539,10 @@ exports.handler = async (event) => {
       return { statusCode: 200, body: "ok" };
     }
 
-    // Rate limit kontrolü
+    // Rate limit kontrolü - çok hızlı mesaj gönderenlere kısa cevap ver, sessiz kalma
     if (await isRateLimited(phone)) {
-      console.log("Rate limit asıldı, istek reddedildi:", phone);
+      console.log("Rate limit asildi, kisa cevap veriliyor:", phone);
+      try { await sendWhatsApp(phone, "Mesajlarinizi aldim, siraniza gore donuyorum. Biraz bekleyin lutfen."); } catch {}
       return { statusCode: 200, body: "ok" };
     }
 
@@ -624,6 +626,11 @@ exports.handler = async (event) => {
     return { statusCode: 200, body: "ok" };
   } catch (error) {
     console.error("Webhook hatasi:", error.message);
+    // Beklenmedik hata olsa bile müşteriyi boş bırakma
+    try {
+      const phone = extractPhone(JSON.parse(event.body || "{}"));
+      if (phone) await sendWhatsApp(phone, "Mesajinizi aldim, en kisa surede donuyorum. Bilgi icin: +90 537 363 06 08");
+    } catch {}
     return { statusCode: 200, body: "ok" };
   }
 };
