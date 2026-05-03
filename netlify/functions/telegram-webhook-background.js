@@ -23,8 +23,8 @@ const KARSILAMA_METNI =
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function randomDelay() {
-  const min = parseInt(process.env.RESPONSE_DELAY_MIN || "10") * 1000;
-  const max = parseInt(process.env.RESPONSE_DELAY_MAX || "40") * 1000;
+  const min = parseInt(process.env.RESPONSE_DELAY_MIN || "1") * 1000;
+  const max = parseInt(process.env.RESPONSE_DELAY_MAX || "3") * 1000;
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
@@ -163,42 +163,6 @@ async function generateResponse(chatId, message) {
   }
 }
 
-async function humanizeText(text) {
-  if (!text || text.length < 10) return text;
-  try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + process.env.GROQ_API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          {
-            role: "system",
-            content: `Sen bir Türk plastik malzeme satıcısısın ve Telegram'dan müşteriye yazıyorsun. Sana verilen metni aşağıdaki kurallara göre yeniden yaz:
-- Gerçek bir insanın mesajı gibi yaz, robot gibi değil
-- Kısa ve doğal cümleler kur
-- Türkçe'de günlük konuşma dilini kullan ama profesyonel kal
-- Bilgileri koru: fiyatlar, ürün adları, firma adı, telefon numaraları DEĞİŞMEZ
-- Emoji kullanma
-- Sadece yeniden yazılmış mesajı ver, açıklama ekleme`,
-          },
-          { role: "user", content: text },
-        ],
-        max_tokens: 600,
-        temperature: 0.8,
-      }),
-    });
-    if (!res.ok) return text;
-    const data = await res.json();
-    return data.choices[0].message.content.trim() || text;
-  } catch {
-    return text;
-  }
-}
-
 function parseQuote(text) {
   const match = text.match(/\[TEKLIF\]([\s\S]*?)\[\/TEKLIF\]/);
   if (!match) return null;
@@ -222,7 +186,8 @@ function parseQuote(text) {
 }
 
 function fmtNum(n) {
-  const [intPart, decPart] = n.toFixed(2).split(".");
+  const num = parseFloat(n) || 0;
+  const [intPart, decPart] = num.toFixed(2).split(".");
   return intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "," + decPart;
 }
 
@@ -334,10 +299,11 @@ async function tgSendDocument(chatId, docUrl, caption) {
 }
 
 async function sendKatalogAndGreeting(chatId) {
-  for (const url of KATALOG_URLS) {
-    try { await tgSendPhoto(chatId, url); } catch (e) { console.error("TG foto hatasi:", e.message); }
-    await sleep(3000);
+  for (let i = 0; i < KATALOG_URLS.length; i++) {
+    try { await tgSendPhoto(chatId, KATALOG_URLS[i]); } catch (e) { console.error("TG foto hatasi:", e.message); }
+    if (i < KATALOG_URLS.length - 1) await sleep(3000);
   }
+  await sleep(2000);
   try { await tgSendMessage(chatId, KARSILAMA_METNI); } catch (e) { console.error("TG karsilama hatasi:", e.message); }
 }
 
@@ -386,10 +352,11 @@ exports.handler = async (event) => {
       .trim();
 
     if (sendKatalog) {
-      for (const url of KATALOG_URLS) {
-        try { await tgSendPhoto(chatId, url); } catch (e) { console.error("TG foto hatasi:", e.message); }
-        await sleep(3000);
+      for (let i = 0; i < KATALOG_URLS.length; i++) {
+        try { await tgSendPhoto(chatId, KATALOG_URLS[i]); } catch (e) { console.error("TG foto hatasi:", e.message); }
+        if (i < KATALOG_URLS.length - 1) await sleep(3000);
       }
+      await sleep(2000);
     }
 
     if (quoteData) {
