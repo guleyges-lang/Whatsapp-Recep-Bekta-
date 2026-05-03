@@ -336,13 +336,13 @@ const KATALOG_URLS = [
 ];
 
 async function sendImage(phone, imageUrl) {
-  const res = await fetch("https://www.wasenderapi.com/api/send-image-message", {
+  const res = await fetch("https://www.wasenderapi.com/api/send-message", {
     method: "POST",
     headers: {
       Authorization: "Bearer " + process.env.WASENDER_API_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ to: phone, url: imageUrl }),
+    body: JSON.stringify({ to: phone, imageUrl }),
   });
   const txt = await res.text();
   console.log("Resim gonderme: " + res.status + " " + txt.slice(0, 100));
