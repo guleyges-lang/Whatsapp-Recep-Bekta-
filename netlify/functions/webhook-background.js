@@ -79,6 +79,14 @@ SATIS KURALLARI:
 - Siparis icin havale + arac plakasi iste`;
 }
 
+const KARSILAMA_METNI =
+  "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin.";
+
+const KATALOG_URLS = [
+  "https://nwhuoyzezgrsilvwjohu.supabase.co/storage/v1/object/public/katalog/borular.jpg",
+  "https://nwhuoyzezgrsilvwjohu.supabase.co/storage/v1/object/public/katalog/kasa_buat.jpg",
+];
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function randomDelay() {
@@ -90,6 +98,7 @@ function randomDelay() {
 function extractMessage(body) {
   if (body.data?.messages?.messageBody) return body.data.messages.messageBody;
   if (body.data?.messages?.message?.conversation) return body.data.messages.message.conversation;
+  if (body.data?.messages?.message?.extendedTextMessage?.text) return body.data.messages.message.extendedTextMessage.text;
   if (body.message?.text) return body.message.text;
   if (body.text) return body.text;
   return null;
@@ -106,19 +115,38 @@ function isOwnMessage(body) {
   return body.data?.messages?.key?.fromMe === true || body.fromMe === true;
 }
 
-async function getHistory(phone) {
-  const { data } = await supabase
-    .from("conversations")
-    .select("customer_message, bot_response")
-    .eq("phone", phone)
-    .order("created_at", { ascending: false })
-    .limit(8);
+function isGroupMessage(body) {
+  const phone = extractPhone(body);
+  if (!phone) return false;
+  return phone.includes("@g.us") || phone.includes("@broadcast") || /^\d{10,15}-\d+$/.test(phone);
+}
 
-  if (!data || data.length === 0) return [];
-  return data.reverse().flatMap((h) => [
-    { role: "user", content: h.customer_message },
-    { role: "assistant", content: h.bot_response },
-  ]);
+async function getHistory(phone) {
+  try {
+    const { data } = await supabase
+      .from("conversations")
+      .select("customer_message, bot_response")
+      .eq("phone", phone)
+      .order("created_at", { ascending: false })
+      .limit(8);
+
+    if (!data || data.length === 0) return [];
+    return data.reverse().flatMap((h) => [
+      { role: "user", content: h.customer_message },
+      { role: "assistant", content: h.bot_response },
+    ]);
+  } catch (e) {
+    console.error("Gecmis yuklenemedi:", e.message);
+    return [];
+  }
+}
+
+async function saveConversation(phone, customerMessage, botResponse) {
+  try {
+    await supabase.from("conversations").insert({ phone, customer_message: customerMessage, bot_response: botResponse });
+  } catch (e) {
+    console.error("Konusma kaydedilemedi:", e.message);
+  }
 }
 
 function parseQuote(text) {
@@ -152,158 +180,163 @@ function fmtNum(n) {
 
 async function generatePDF(quoteData, quoteNumber, tarih) {
   return new Promise((resolve, reject) => {
-    const kdvHaric = Math.round(quoteData.items.reduce((s, i) => s + i.total, 0) * 100) / 100;
-    const kdvTutar = Math.round(kdvHaric * 0.2 * 100) / 100;
-    const genelToplam = Math.round((kdvHaric + kdvTutar) * 100) / 100;
+    try {
+      const kdvHaric = Math.round(quoteData.items.reduce((s, i) => s + i.total, 0) * 100) / 100;
+      const kdvTutar = Math.round(kdvHaric * 0.2 * 100) / 100;
+      const genelToplam = Math.round((kdvHaric + kdvTutar) * 100) / 100;
 
-    const th = { fontSize: 8, bold: true, fillColor: "#eeeeee" };
-    const tableBody = [
-      [
-        { text: "Sira", ...th, alignment: "center" },
-        { text: "Malzeme Adi", ...th },
-        { text: "Miktar", ...th, alignment: "right" },
-        { text: "Birim", ...th, alignment: "center" },
-        { text: "Liste Fiyati", ...th, alignment: "right" },
-        { text: "Iskonto", ...th, alignment: "center" },
-        { text: "Net Fiyat", ...th, alignment: "right" },
-        { text: "Toplam Fiyat", ...th, alignment: "right" },
-      ],
-      ...quoteData.items.map((item, idx) => [
-        { text: String(idx + 1), fontSize: 8, alignment: "center" },
-        { text: item.name, fontSize: 8 },
-        { text: String(item.qty), fontSize: 8, alignment: "right" },
-        { text: item.unit, fontSize: 8, alignment: "center" },
-        { text: fmtNum(item.listPrice), fontSize: 8, alignment: "right" },
-        { text: "45,00%", fontSize: 8, alignment: "center" },
-        { text: fmtNum(item.netPrice), fontSize: 8, alignment: "right" },
-        { text: "TL" + fmtNum(item.total), fontSize: 8, alignment: "right" },
-      ]),
-    ];
+      const th = { fontSize: 8, bold: true, fillColor: "#eeeeee" };
+      const tableBody = [
+        [
+          { text: "Sira", ...th, alignment: "center" },
+          { text: "Malzeme Adi", ...th },
+          { text: "Miktar", ...th, alignment: "right" },
+          { text: "Birim", ...th, alignment: "center" },
+          { text: "Liste Fiyati", ...th, alignment: "right" },
+          { text: "Iskonto", ...th, alignment: "center" },
+          { text: "Net Fiyat", ...th, alignment: "right" },
+          { text: "Toplam Fiyat", ...th, alignment: "right" },
+        ],
+        ...quoteData.items.map((item, idx) => [
+          { text: String(idx + 1), fontSize: 8, alignment: "center" },
+          { text: item.name, fontSize: 8 },
+          { text: String(item.qty), fontSize: 8, alignment: "right" },
+          { text: item.unit, fontSize: 8, alignment: "center" },
+          { text: fmtNum(item.listPrice), fontSize: 8, alignment: "right" },
+          { text: "45,00%", fontSize: 8, alignment: "center" },
+          { text: fmtNum(item.netPrice), fontSize: 8, alignment: "right" },
+          { text: "TL" + fmtNum(item.total), fontSize: 8, alignment: "right" },
+        ]),
+      ];
 
-    const docDef = {
-      pageSize: "A4",
-      pageMargins: [40, 40, 40, 40],
-      content: [
-        {
-          columns: [
-            {
-              stack: [
-                { text: "GULEY PLASTIK", bold: true, fontSize: 20, color: "#1a6b3c" },
-                { text: "SAN.TIC.LTD.STI", fontSize: 8, color: "#1a6b3c" },
-              ],
-              width: 200,
-            },
-            { width: "*", text: "" },
-            {
-              stack: [
-                { text: "GULEY PLASTIK SAN.TIC.LTD. STI", bold: true, fontSize: 9 },
-                { text: "Anbar Ormandibi No1/10 Ekinozu/K.maras", fontSize: 8 },
-                { text: "Elbistan V.D:4110898", fontSize: 8 },
-                { text: "www.guleyplastik.com", fontSize: 8 },
-                { text: "info@guleyplastik.com", fontSize: 8 },
-              ],
-              alignment: "right",
-            },
-          ],
-          marginBottom: 8,
-        },
-        {
-          canvas: [{ type: "line", x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: "#999" }],
-          marginBottom: 8,
-        },
-        {
-          columns: [
-            {
-              stack: [
-                { text: "TEKLIF TARIHI VE NUMARASI", bold: true, fontSize: 8.5, lineHeight: 1.7 },
-                { text: "FIRMA ADI", bold: true, fontSize: 8.5, lineHeight: 1.7 },
-                { text: "FIRMA YETKILISI", bold: true, fontSize: 8.5, lineHeight: 1.7 },
-                { text: "TEKLIFI HAZIRLAYAN", bold: true, fontSize: 8.5, lineHeight: 1.7 },
-                { text: "EMAIL", bold: true, fontSize: 8.5, lineHeight: 1.7 },
-              ],
-              width: 160,
-            },
-            {
-              stack: [
-                { text: ": " + tarih + " - " + quoteNumber, fontSize: 8.5, lineHeight: 1.7 },
-                { text: ": " + quoteData.firma, fontSize: 8.5, lineHeight: 1.7 },
-                { text: ": GULEY PLASTIK", fontSize: 8.5, lineHeight: 1.7 },
-                { text: ": RECEP BEKTAS", fontSize: 8.5, lineHeight: 1.7 },
-                { text: ":recepbektas@hotmail.com.tr", fontSize: 8.5, lineHeight: 1.7 },
-              ],
-              width: "*",
-            },
-          ],
-          marginBottom: 12,
-        },
-        {
-          table: {
-            headerRows: 1,
-            widths: [20, "*", 40, 28, 52, 43, 50, 65],
-            body: tableBody,
-          },
-          layout: {
-            hLineWidth: () => 0.5,
-            vLineWidth: () => 0.5,
-            hLineColor: () => "#444",
-            vLineColor: () => "#444",
-            paddingLeft: () => 3,
-            paddingRight: () => 3,
-            paddingTop: () => 3,
-            paddingBottom: () => 3,
-          },
-          marginBottom: 5,
-        },
-        {
-          columns: [
-            { width: "*", text: "" },
-            {
-              table: {
-                widths: [130, 85],
-                body: [
-                  [
-                    { text: "KDV'siz Toplam Tutar", fontSize: 8.5 },
-                    { text: "TL" + fmtNum(kdvHaric), fontSize: 8.5, alignment: "right" },
-                  ],
-                  [
-                    { text: "KDV Tutari ( 20% )", fontSize: 8.5 },
-                    { text: fmtNum(kdvTutar), fontSize: 8.5, alignment: "right" },
-                  ],
-                  [
-                    { text: "Genel Toplam", fontSize: 8.5, bold: true },
-                    { text: fmtNum(genelToplam), fontSize: 8.5, alignment: "right", bold: true },
-                  ],
+      const docDef = {
+        pageSize: "A4",
+        pageMargins: [40, 40, 40, 40],
+        content: [
+          {
+            columns: [
+              {
+                stack: [
+                  { text: "GULEY PLASTIK", bold: true, fontSize: 20, color: "#1a6b3c" },
+                  { text: "SAN.TIC.LTD.STI", fontSize: 8, color: "#1a6b3c" },
                 ],
+                width: 200,
               },
-              layout: {
-                hLineWidth: () => 0.5,
-                vLineWidth: () => 0.5,
-                hLineColor: () => "#444",
-                vLineColor: () => "#444",
-                paddingLeft: () => 5,
-                paddingRight: () => 5,
-                paddingTop: () => 3,
-                paddingBottom: () => 3,
+              { width: "*", text: "" },
+              {
+                stack: [
+                  { text: "GULEY PLASTIK SAN.TIC.LTD. STI", bold: true, fontSize: 9 },
+                  { text: "Anbar Ormandibi No1/10 Ekinozu/K.maras", fontSize: 8 },
+                  { text: "Elbistan V.D:4110898", fontSize: 8 },
+                  { text: "www.guleyplastik.com", fontSize: 8 },
+                  { text: "info@guleyplastik.com", fontSize: 8 },
+                ],
+                alignment: "right",
               },
+            ],
+            marginBottom: 8,
+          },
+          {
+            canvas: [{ type: "line", x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: "#999" }],
+            marginBottom: 8,
+          },
+          {
+            columns: [
+              {
+                stack: [
+                  { text: "TEKLIF TARIHI VE NUMARASI", bold: true, fontSize: 8.5, lineHeight: 1.7 },
+                  { text: "FIRMA ADI", bold: true, fontSize: 8.5, lineHeight: 1.7 },
+                  { text: "FIRMA YETKILISI", bold: true, fontSize: 8.5, lineHeight: 1.7 },
+                  { text: "TEKLIFI HAZIRLAYAN", bold: true, fontSize: 8.5, lineHeight: 1.7 },
+                  { text: "EMAIL", bold: true, fontSize: 8.5, lineHeight: 1.7 },
+                ],
+                width: 160,
+              },
+              {
+                stack: [
+                  { text: ": " + tarih + " - " + quoteNumber, fontSize: 8.5, lineHeight: 1.7 },
+                  { text: ": " + quoteData.firma, fontSize: 8.5, lineHeight: 1.7 },
+                  { text: ": GULEY PLASTIK", fontSize: 8.5, lineHeight: 1.7 },
+                  { text: ": RECEP BEKTAS", fontSize: 8.5, lineHeight: 1.7 },
+                  { text: ":recepbektas@hotmail.com.tr", fontSize: 8.5, lineHeight: 1.7 },
+                ],
+                width: "*",
+              },
+            ],
+            marginBottom: 12,
+          },
+          {
+            table: {
+              headerRows: 1,
+              widths: [20, "*", 40, 28, 52, 43, 50, 65],
+              body: tableBody,
             },
-          ],
-          marginBottom: 15,
-        },
-        {
-          stack: [
-            { text: "Siparis teyidinde nakit havale ile odenecektir. Odemesi alinmamis siparislerin iptal hakki firmamiza aittir.", fontSize: 8, decoration: "underline", lineHeight: 1.6 },
-            { text: "Teslimat Sekli: Ekinozu/K.maras depomuz teslimidir. Yuklu alimlarda yerine teslim yapilir.", fontSize: 8, decoration: "underline", lineHeight: 1.6 },
-            { text: "Opsiyon: Fiyat teklifimiz 3 gun gecerlidir.", fontSize: 8, lineHeight: 1.6 },
-            { text: "Teklif Butunlugu: Teklifimiz butun olarak gecerlidir.", fontSize: 8, lineHeight: 1.6 },
-          ],
-        },
-      ],
-      defaultStyle: { font: "Roboto" },
-    };
+            layout: {
+              hLineWidth: () => 0.5,
+              vLineWidth: () => 0.5,
+              hLineColor: () => "#444",
+              vLineColor: () => "#444",
+              paddingLeft: () => 3,
+              paddingRight: () => 3,
+              paddingTop: () => 3,
+              paddingBottom: () => 3,
+            },
+            marginBottom: 5,
+          },
+          {
+            columns: [
+              { width: "*", text: "" },
+              {
+                table: {
+                  widths: [130, 85],
+                  body: [
+                    [
+                      { text: "KDV'siz Toplam Tutar", fontSize: 8.5 },
+                      { text: "TL" + fmtNum(kdvHaric), fontSize: 8.5, alignment: "right" },
+                    ],
+                    [
+                      { text: "KDV Tutari ( 20% )", fontSize: 8.5 },
+                      { text: fmtNum(kdvTutar), fontSize: 8.5, alignment: "right" },
+                    ],
+                    [
+                      { text: "Genel Toplam", fontSize: 8.5, bold: true },
+                      { text: fmtNum(genelToplam), fontSize: 8.5, alignment: "right", bold: true },
+                    ],
+                  ],
+                },
+                layout: {
+                  hLineWidth: () => 0.5,
+                  vLineWidth: () => 0.5,
+                  hLineColor: () => "#444",
+                  vLineColor: () => "#444",
+                  paddingLeft: () => 5,
+                  paddingRight: () => 5,
+                  paddingTop: () => 3,
+                  paddingBottom: () => 3,
+                },
+              },
+            ],
+            marginBottom: 15,
+          },
+          {
+            stack: [
+              { text: "Siparis teyidinde nakit havale ile odenecektir. Odemesi alinmamis siparislerin iptal hakki firmamiza aittir.", fontSize: 8, decoration: "underline", lineHeight: 1.6 },
+              { text: "Teslimat Sekli: Ekinozu/K.maras depomuz teslimidir. Yuklu alimlarda yerine teslim yapilir.", fontSize: 8, decoration: "underline", lineHeight: 1.6 },
+              { text: "Opsiyon: Fiyat teklifimiz 3 gun gecerlidir.", fontSize: 8, lineHeight: 1.6 },
+              { text: "Teklif Butunlugu: Teklifimiz butun olarak gecerlidir.", fontSize: 8, lineHeight: 1.6 },
+            ],
+          },
+        ],
+        defaultStyle: { font: "Roboto" },
+      };
 
-    pdfMake.createPdf(docDef).getBuffer((buffer) => {
-      resolve(Buffer.from(buffer));
-    });
+      pdfMake.createPdf(docDef).getBuffer((buffer) => {
+        if (!buffer) { reject(new Error("PDF buffer bos dondu")); return; }
+        resolve(Buffer.from(buffer));
+      });
+    } catch (e) {
+      reject(e);
+    }
   });
 }
 
@@ -330,15 +363,10 @@ async function uploadPDF(buffer, filename) {
 async function saveQuote(phone, firma, total, pdfUrl) {
   try {
     await supabase.from("quotes").insert({ phone, firma, total_amount: total, pdf_url: pdfUrl });
-  } catch {
-    // quotes tablosu henuz yoksa sessizce gec
+  } catch (e) {
+    console.error("Teklif kaydedilemedi:", e.message);
   }
 }
-
-const KATALOG_URLS = [
-  "https://nwhuoyzezgrsilvwjohu.supabase.co/storage/v1/object/public/katalog/borular.jpg",
-  "https://nwhuoyzezgrsilvwjohu.supabase.co/storage/v1/object/public/katalog/kasa_buat.jpg",
-];
 
 async function sendImage(phone, imageUrl) {
   const body = JSON.stringify({ to: phone, imageUrl });
@@ -367,28 +395,6 @@ async function sendDocument(phone, pdfUrl, filename) {
   if (!res.ok) throw new Error("WasenderAPI belge: " + res.status);
 }
 
-async function generateResponse(phone, message) {
-  const history = await getHistory(phone);
-  const messages = [
-    { role: "system", content: getSistemPrompt() },
-    ...history,
-    { role: "user", content: message },
-  ];
-
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + process.env.GROQ_API_KEY,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages, max_tokens: 800, temperature: 0.7 }),
-  });
-
-  if (!res.ok) throw new Error("Groq: " + await res.text());
-  const data = await res.json();
-  return data.choices[0].message.content.trim();
-}
-
 async function sendWhatsApp(phone, text) {
   const res = await fetch("https://www.wasenderapi.com/api/send-message", {
     method: "POST",
@@ -401,8 +407,42 @@ async function sendWhatsApp(phone, text) {
   if (!res.ok) throw new Error("WasenderAPI: " + res.status);
 }
 
-async function saveConversation(phone, customerMessage, botResponse) {
-  await supabase.from("conversations").insert({ phone, customer_message: customerMessage, bot_response: botResponse });
+async function sendKatalogAndGreeting(phone) {
+  for (const url of KATALOG_URLS) {
+    try { await sendImage(phone, url); } catch (e) { console.error("Gorsel hatasi:", e.message); }
+    await sleep(8000);
+  }
+  try { await sendWhatsApp(phone, KARSILAMA_METNI); } catch (e) { console.error("Karsilama hatasi:", e.message); }
+}
+
+async function generateResponse(phone, message) {
+  const history = await getHistory(phone);
+  const messages = [
+    { role: "system", content: getSistemPrompt() },
+    ...history,
+    { role: "user", content: message },
+  ];
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + process.env.GROQ_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages, max_tokens: 800, temperature: 0.7 }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return data.choices[0].message.content.trim();
+    }
+
+    const errText = await res.text();
+    console.error(`Groq deneme ${attempt + 1} basarisiz: ${res.status} ${errText.slice(0, 100)}`);
+    if (attempt === 0) await sleep(4000);
+    else throw new Error("Groq: " + errText);
+  }
 }
 
 exports.handler = async (event) => {
@@ -412,44 +452,38 @@ exports.handler = async (event) => {
     const body = JSON.parse(event.body || "{}");
     if (body.event && body.event !== "messages.received") return { statusCode: 200, body: "ok" };
     if (isOwnMessage(body)) return { statusCode: 200, body: "ok" };
+    if (isGroupMessage(body)) return { statusCode: 200, body: "ok" };
 
     const phone = extractPhone(body);
     const message = extractMessage(body);
+
     if (!phone) {
       console.log("Telefon bulunamadi:", JSON.stringify(body).slice(0, 200));
       return { statusCode: 200, body: "ok" };
     }
+
     if (!message) {
-      console.log("Metin yok (gorsel/ses/belge), katalog + karsilama gonderiliyor:", phone);
+      console.log("Metin yok (gorsel/ses/belge), katalog gonderiliyor:", phone);
       await sleep(randomDelay());
-      for (const url of KATALOG_URLS) {
-        try { await sendImage(phone, url); } catch (e) { console.error("Gorsel hatasi:", e.message); }
-        await sleep(8000);
-      }
-      try {
-        await sendWhatsApp(phone, "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin.");
-      } catch {}
+      await sendKatalogAndGreeting(phone);
+      await saveConversation(phone, "[MEDYA]", KARSILAMA_METNI);
       return { statusCode: 200, body: "ok" };
     }
 
     console.log("Mesaj: " + phone + " -> " + message);
+
     let botResponse;
     try {
       botResponse = await generateResponse(phone, message);
     } catch (aiErr) {
-      console.error("AI hatasi:", aiErr.message);
+      console.error("AI hatasi (2 deneme basarisiz):", aiErr.message);
       await sleep(randomDelay());
-      for (const url of KATALOG_URLS) {
-        try { await sendImage(phone, url); } catch (e) { console.error("Gorsel hatasi:", e.message); }
-        await sleep(8000);
-      }
-      try {
-        await sendWhatsApp(phone, "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin.");
-      } catch {}
+      await sendKatalogAndGreeting(phone);
+      await saveConversation(phone, message, KARSILAMA_METNI);
       return { statusCode: 200, body: "ok" };
     }
-    console.log("AI: " + botResponse);
 
+    console.log("AI: " + botResponse);
     await sleep(randomDelay());
 
     const sendKatalog = /\[KATALOG\]|\bKATALOG\b/.test(botResponse);
