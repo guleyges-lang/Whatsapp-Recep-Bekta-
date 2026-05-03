@@ -329,16 +329,17 @@ const KATALOG_URLS = [
   "https://nwhuoyzezgrsilvwjohu.supabase.co/storage/v1/object/public/katalog/kasa_buat.jpg",
 ];
 
-async function sendImage(phone, imageUrl, caption) {
-  const res = await fetch("https://www.wasenderapi.com/api/send-message", {
+async function sendImage(phone, imageUrl) {
+  const res = await fetch("https://www.wasenderapi.com/api/send-image-message", {
     method: "POST",
     headers: {
       Authorization: "Bearer " + process.env.WASENDER_API_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ to: phone, imageUrl, caption: caption || "" }),
+    body: JSON.stringify({ to: phone, url: imageUrl }),
   });
-  if (!res.ok) console.error("Resim gonderme hatasi: " + res.status);
+  const txt = await res.text();
+  console.log("Resim gonderme: " + res.status + " " + txt.slice(0, 100));
 }
 
 async function sendDocument(phone, pdfUrl, filename) {
