@@ -428,8 +428,13 @@ exports.handler = async (event) => {
 
     if (sendKatalog) {
       for (const url of KATALOG_URLS) {
-        await sendImage(phone, url);
-        await sleep(1500);
+        try {
+          await sendImage(phone, url);
+          console.log("Gorsel gonderildi: " + url);
+        } catch (imgErr) {
+          console.error("Gorsel hatasi:", imgErr.message, url);
+        }
+        await sleep(3000);
       }
     }
 
@@ -446,11 +451,13 @@ exports.handler = async (event) => {
         console.log("PDF gonderildi: " + phone);
       } catch (pdfErr) {
         console.error("PDF hatasi:", pdfErr.message);
-        await sendWhatsApp(phone, cleanText || "Fiyat teklifinizi hazirladim. Detaylar icin arayin: +90 537 363 06 08");
+        try { await sendWhatsApp(phone, cleanText || "Fiyat teklifinizi hazirladim. Detaylar icin arayin: +90 537 363 06 08"); } catch {}
         await saveConversation(phone, message, cleanText);
       }
     } else {
-      if (cleanText) await sendWhatsApp(phone, cleanText);
+      if (cleanText) {
+        try { await sendWhatsApp(phone, cleanText); } catch (e) { console.error("Metin hatasi:", e.message); }
+      }
       await saveConversation(phone, message, cleanText);
     }
 
