@@ -21,11 +21,11 @@ function getSistemPrompt() {
 Bugünün tarihi: ${today}
 
 KONUŞMA TARZI - ÇOK ÖNEMLİ:
-- Gerçek bir Türk satıcı gibi yaz. "Merhaba! Güley Plastik'e hoş geldiniz." gibi robotik açılışlar YAPMA
+- Gerçek bir Türk satıcı gibi yaz. Katalog karsilama mesaji HARIC diger mesajlarda robotik kalip YAPMA
 - Her mesajda farklı bir giriş yap. Bazen "Merhaba", bazen "Evet", bazen direkt konuya gir
 - Kısa ve doğal cümleler kur. WhatsApp mesajı gibi yaz, resmi e-posta gibi değil
-- Aynı kalıpları tekrarlama. "Fabrikadan direkt" ifadesini her mesajda kullanma
-- Zaman zaman düşünüyormuşsun gibi yaz: "şöyle söyleyeyim", "aslında", "bakın" gibi doğal bağlaçlar kullan
+- Ayni kalibi tekrarlama. "Fabrikadan direkt" ifadesini her mesajda kullanma
+- Zaman zaman dogal baglaçlar kullan: "şöyle söyleyeyim", "aslında", "bakın"
 - Emoji kullanma
 - Yapay zeka olduğunu soran müşteriye: "Hayır, ben Recep, Güley Plastik satış ekibindenim" de
 
@@ -109,8 +109,8 @@ const KATALOG_URLS = [
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function randomDelay() {
-  const min = parseInt(process.env.RESPONSE_DELAY_MIN || "10") * 1000;
-  const max = parseInt(process.env.RESPONSE_DELAY_MAX || "40") * 1000;
+  const min = parseInt(process.env.RESPONSE_DELAY_MIN || "1") * 1000;
+  const max = parseInt(process.env.RESPONSE_DELAY_MAX || "3") * 1000;
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
@@ -193,7 +193,8 @@ function parseQuote(text) {
 }
 
 function fmtNum(n) {
-  const [intPart, decPart] = n.toFixed(2).split(".");
+  const num = parseFloat(n) || 0;
+  const [intPart, decPart] = num.toFixed(2).split(".");
   return intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "," + decPart;
 }
 
@@ -427,53 +428,12 @@ async function sendWhatsApp(phone, text) {
 }
 
 async function sendKatalogAndGreeting(phone) {
-  for (const url of KATALOG_URLS) {
-    try { await sendImage(phone, url); } catch (e) { console.error("Gorsel hatasi:", e.message); }
-    await sleep(8000);
+  for (let i = 0; i < KATALOG_URLS.length; i++) {
+    try { await sendImage(phone, KATALOG_URLS[i]); } catch (e) { console.error("Gorsel hatasi:", e.message); }
+    if (i < KATALOG_URLS.length - 1) await sleep(8000);
   }
+  await sleep(2000);
   try { await sendWhatsApp(phone, KARSILAMA_METNI); } catch (e) { console.error("Karsilama hatasi:", e.message); }
-}
-
-async function humanizeText(text) {
-  if (!text || text.length < 10) return text;
-  try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer " + process.env.GROQ_API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          {
-            role: "system",
-            content: `Sen bir Türk plastik malzeme satıcısısın ve WhatsApp'tan müşteriye yazıyorsun. Sana verilen metni aşağıdaki kurallara göre yeniden yaz:
-
-KURALLAR:
-- Gerçek bir insanın WhatsApp mesajı gibi yaz, robot gibi değil
-- Çok resmi kalıpları kaldır ("Merhaba! Güley Plastik'e hoş geldiniz!" gibi uzun açılışlar yerine kısa, doğal bir selamlama yap)
-- Cümleleri kısa ve doğal tut, bazen tek cümle bile olabilir
-- Türkçe'de günlük konuşma dilini kullan ama profesyonel kal
-- "şu anda", "hemen", "tabii ki" gibi doğal bağlaçlar kullan
-- Bilgileri koru: fiyatlar, ürün adları, firma adı, telefon numaraları DEĞİŞMEZ
-- Emoji kullanma
-- İçeriği değiştirme, sadece tonu ve yapıyı insanlaştır
-- Çıktıda sadece yeniden yazılmış mesajı ver, açıklama ekleme`,
-          },
-          { role: "user", content: text },
-        ],
-        max_tokens: 600,
-        temperature: 0.8,
-      }),
-    });
-    if (!res.ok) return text;
-    const data = await res.json();
-    const humanized = data.choices[0].message.content.trim();
-    return humanized || text;
-  } catch {
-    return text;
-  }
 }
 
 async function generateResponse(phone, message) {
@@ -555,15 +515,16 @@ exports.handler = async (event) => {
       .trim();
 
     if (sendKatalog) {
-      for (const url of KATALOG_URLS) {
+      for (let i = 0; i < KATALOG_URLS.length; i++) {
         try {
-          await sendImage(phone, url);
-          console.log("Gorsel gonderildi: " + url);
+          await sendImage(phone, KATALOG_URLS[i]);
+          console.log("Gorsel gonderildi: " + KATALOG_URLS[i]);
         } catch (imgErr) {
-          console.error("Gorsel hatasi:", imgErr.message, url);
+          console.error("Gorsel hatasi:", imgErr.message, KATALOG_URLS[i]);
         }
-        await sleep(8000);
+        if (i < KATALOG_URLS.length - 1) await sleep(8000);
       }
+      await sleep(2000);
     }
 
     if (quoteData) {
