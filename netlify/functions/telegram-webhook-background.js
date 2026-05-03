@@ -372,11 +372,10 @@ exports.handler = async (event) => {
 
     const sendKatalog = /\[KATALOG\]|\bKATALOG\b/.test(botResponse);
     const quoteData = parseQuote(botResponse);
-    const rawText = botResponse
+    const cleanText = botResponse
       .replace(/\[?KATALOG\]?/g, "")
       .replace(/\[TEKLIF\][\s\S]*?\[\/TEKLIF\]/g, "")
       .trim();
-    const cleanText = rawText ? await humanizeText(rawText) : rawText;
 
     if (sendKatalog) {
       for (const url of KATALOG_URLS) {
