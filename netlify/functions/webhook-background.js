@@ -415,6 +415,48 @@ async function sendKatalogAndGreeting(phone) {
   try { await sendWhatsApp(phone, KARSILAMA_METNI); } catch (e) { console.error("Karsilama hatasi:", e.message); }
 }
 
+async function humanizeText(text) {
+  if (!text || text.length < 10) return text;
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + process.env.GROQ_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          {
+            role: "system",
+            content: `Sen bir Türk plastik malzeme satıcısısın ve WhatsApp'tan müşteriye yazıyorsun. Sana verilen metni aşağıdaki kurallara göre yeniden yaz:
+
+KURALLAR:
+- Gerçek bir insanın WhatsApp mesajı gibi yaz, robot gibi değil
+- Çok resmi kalıpları kaldır ("Merhaba! Güley Plastik'e hoş geldiniz!" gibi uzun açılışlar yerine kısa, doğal bir selamlama yap)
+- Cümleleri kısa ve doğal tut, bazen tek cümle bile olabilir
+- Türkçe'de günlük konuşma dilini kullan ama profesyonel kal
+- "şu anda", "hemen", "tabii ki" gibi doğal bağlaçlar kullan
+- Bilgileri koru: fiyatlar, ürün adları, firma adı, telefon numaraları DEĞİŞMEZ
+- Emoji kullanma
+- İçeriği değiştirme, sadece tonu ve yapıyı insanlaştır
+- Çıktıda sadece yeniden yazılmış mesajı ver, açıklama ekleme`,
+          },
+          { role: "user", content: text },
+        ],
+        max_tokens: 600,
+        temperature: 0.8,
+      }),
+    });
+    if (!res.ok) return text;
+    const data = await res.json();
+    const humanized = data.choices[0].message.content.trim();
+    return humanized || text;
+  } catch {
+    return text;
+  }
+}
+
 async function generateResponse(phone, message) {
   const history = await getHistory(phone);
   const messages = [
@@ -488,10 +530,12 @@ exports.handler = async (event) => {
 
     const sendKatalog = /\[KATALOG\]|\bKATALOG\b/.test(botResponse);
     const quoteData = parseQuote(botResponse);
-    const cleanText = botResponse
+    const rawText = botResponse
       .replace(/\[?KATALOG\]?/g, "")
       .replace(/\[TEKLIF\][\s\S]*?\[\/TEKLIF\]/g, "")
       .trim();
+    const cleanText = rawText ? await humanizeText(rawText) : rawText;
+    console.log("Humanize sonrasi: " + cleanText);
 
     if (sendKatalog) {
       for (const url of KATALOG_URLS) {
