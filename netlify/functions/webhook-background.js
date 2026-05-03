@@ -140,6 +140,48 @@ function isGroupMessage(body) {
   return phone.includes("@g.us") || phone.includes("@broadcast") || /^\d{10,15}-\d+$/.test(phone);
 }
 
+// Prompt injection saldırı kalıpları
+const INJECTION_PATTERNS = [
+  /ignore\s+(all\s+)?(previous\s+)?instructions/i,
+  /forget\s+(all\s+)?(previous\s+)?instructions/i,
+  /system\s*prompt/i,
+  /api\s*key/i,
+  /reveal\s+your/i,
+  /you\s+are\s+now\s+(a\s+)?/i,
+  /act\s+as\s+(a\s+)?/i,
+  /pretend\s+(you\s+are|to\s+be)/i,
+  /\[TEKLIF\].*KALEM:/i,
+  /FIRMA:.*\|.*\|/i,
+];
+
+function detectInjection(text) {
+  return INJECTION_PATTERNS.some((p) => p.test(text));
+}
+
+function sanitizeInput(text) {
+  if (!text) return null;
+  // 500 karakteri aşan mesajları kırp
+  if (text.length > 500) {
+    console.log("Uzun mesaj kirpildi, orijinal uzunluk:", text.length);
+    return text.slice(0, 500);
+  }
+  return text.trim();
+}
+
+async function isRateLimited(phone) {
+  try {
+    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
+    const { count } = await supabase
+      .from("conversations")
+      .select("*", { count: "exact", head: true })
+      .eq("phone", phone)
+      .gte("created_at", oneMinuteAgo);
+    return (count || 0) >= 8;
+  } catch {
+    return false;
+  }
+}
+
 async function getHistory(phone) {
   try {
     const { data } = await supabase
@@ -470,24 +512,50 @@ exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") return { statusCode: 200, body: "ok" };
 
+    // Webhook secret kontrolü
+    const webhookSecret = process.env.WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const reqSecret = event.queryStringParameters?.secret || event.headers?.["x-webhook-secret"];
+      if (reqSecret !== webhookSecret) {
+        console.log("Gecersiz webhook secret, istek reddedildi");
+        return { statusCode: 401, body: "unauthorized" };
+      }
+    }
+
     const body = JSON.parse(event.body || "{}");
     if (body.event && body.event !== "messages.received") return { statusCode: 200, body: "ok" };
     if (isOwnMessage(body)) return { statusCode: 200, body: "ok" };
     if (isGroupMessage(body)) return { statusCode: 200, body: "ok" };
 
     const phone = extractPhone(body);
-    const message = extractMessage(body);
+    const rawMessage = extractMessage(body);
 
     if (!phone) {
       console.log("Telefon bulunamadi:", JSON.stringify(body).slice(0, 200));
       return { statusCode: 200, body: "ok" };
     }
 
+    // Rate limit kontrolü
+    if (await isRateLimited(phone)) {
+      console.log("Rate limit asıldı, istek reddedildi:", phone);
+      return { statusCode: 200, body: "ok" };
+    }
+
+    const message = sanitizeInput(rawMessage);
+
     if (!message) {
       console.log("Metin yok (gorsel/ses/belge), katalog gonderiliyor:", phone);
       await sleep(randomDelay());
       await sendKatalogAndGreeting(phone);
       await saveConversation(phone, "[MEDYA]", KARSILAMA_METNI);
+      return { statusCode: 200, body: "ok" };
+    }
+
+    // Prompt injection tespiti
+    if (detectInjection(message)) {
+      console.log("Prompt injection tespit edildi:", phone, message.slice(0, 100));
+      await sleep(randomDelay());
+      try { await sendWhatsApp(phone, "Bu konuda size yardimci olamiyorum. Urunlerimiz hakkinda bilgi almak ister misiniz?"); } catch {}
       return { statusCode: 200, body: "ok" };
     }
 
