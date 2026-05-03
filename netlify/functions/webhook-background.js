@@ -336,16 +336,18 @@ const KATALOG_URLS = [
 ];
 
 async function sendImage(phone, imageUrl) {
+  const body = JSON.stringify({ to: phone, imageUrl });
+  console.log("Resim istegi: " + body.slice(0, 120));
   const res = await fetch("https://www.wasenderapi.com/api/send-message", {
     method: "POST",
     headers: {
       Authorization: "Bearer " + process.env.WASENDER_API_KEY,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ to: phone, imageUrl }),
+    body,
   });
   const txt = await res.text();
-  console.log("Resim gonderme: " + res.status + " " + txt.slice(0, 100));
+  console.log("Resim yaniti: " + res.status + " " + txt.slice(0, 200));
 }
 
 async function sendDocument(phone, pdfUrl, filename) {
@@ -434,7 +436,7 @@ exports.handler = async (event) => {
         } catch (imgErr) {
           console.error("Gorsel hatasi:", imgErr.message, url);
         }
-        await sleep(3000);
+        await sleep(8000);
       }
     }
 
