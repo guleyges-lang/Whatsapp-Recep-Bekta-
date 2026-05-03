@@ -45,7 +45,12 @@ Norm Kasa(2.50→1.38), Plastik Takoz(4.00→2.20), Sekizlik Dubel(0.18→0.10)
 1-2 li Sigorta Kutusu(15.20→8.36), Plastik Tij Duy(15.00→8.25), Plastik Duy(18.00→9.90)
 
 KONUSMA AKISI:
-1. Yeni musteri (konusma gecmisi yoksa) ya da musteri urunler/katalog hakkinda bilgi istediginde:
+1. Asagidaki durumlarin HERHANGI birinde [KATALOG] gonder:
+   - Musteri ilk kez yazdiginda (konusma gecmisi yoksa)
+   - Musteri "merhaba", "selam", "iyi gunler", "nasil yardimci olabilirsiniz", "bilgi almak istiyorum", "urunleriniz hakkinda", "katalog", "ne satiyorsunuz" gibi bir seylama veya bilgi talep mesaji gonderdiginde
+   - Musteri urunler veya katalog hakkinda bilgi istediginde
+
+   Bu durumlarda:
    - Yanitinin EN BASINA tam olarak su 9 karakteri yaz: [KATALOG]
    - Ardindan hemen su karsilama mesajini yaz (fiyat hesaplama YAPMA, sadece bu metni yaz):
      "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin."
@@ -53,7 +58,7 @@ KONUSMA AKISI:
    - YANLIS cikti ornekleri: "KATALOG Merhaba...", "[ KATALOG ] Merhaba...", fiyat hesabi eklemek
 2. Musteri firma adini verdikten sonra urunleri ve miktarlari sor ya da gelen soruyu cevapla.
 3. Musteri urun ve miktar belirttiginde fiyat teklifi hazirla.
-4. [KATALOG] isaretini SADECE musteri ilk kez yazdiginda veya katalog/urun bilgisi istediginde kullan. Her mesajda kullanma.
+4. [KATALOG] isaretini yukardaki durumlarin DISINDA kullanma. Her mesajda kullanma.
 5. Karsilama mesajina ASLA fiyat hesabi, urun miktari veya toplam tutar ekleme.
 
 FIYAT TEKLIFI KURALLARI:
@@ -410,13 +415,31 @@ exports.handler = async (event) => {
 
     const phone = extractPhone(body);
     const message = extractMessage(body);
-    if (!phone || !message) {
-      console.log("Mesaj/telefon bulunamadi:", JSON.stringify(body));
+    if (!phone) {
+      console.log("Telefon bulunamadi:", JSON.stringify(body).slice(0, 200));
+      return { statusCode: 200, body: "ok" };
+    }
+    if (!message) {
+      console.log("Metin yok (gorsel/ses/belge olabilir), genel cevap gonderiliyor:", phone);
+      await sleep(randomDelay());
+      try {
+        await sendWhatsApp(phone, "Merhaba! Guley Plastik olarak size yardimci olmaktan mutluluk duyariz. Lutfen ihtiyacinizi yazi olarak belirtin, size en kisa surede donelim.");
+      } catch {}
       return { statusCode: 200, body: "ok" };
     }
 
     console.log("Mesaj: " + phone + " -> " + message);
-    const botResponse = await generateResponse(phone, message);
+    let botResponse;
+    try {
+      botResponse = await generateResponse(phone, message);
+    } catch (aiErr) {
+      console.error("AI hatasi:", aiErr.message);
+      await sleep(5000);
+      try {
+        await sendWhatsApp(phone, "Mesajinizi aldik, en kisa surede size donecegiz. Acil durumlar icin: +90 537 363 06 08");
+      } catch {}
+      return { statusCode: 200, body: "ok" };
+    }
     console.log("AI: " + botResponse);
 
     await sleep(randomDelay());
