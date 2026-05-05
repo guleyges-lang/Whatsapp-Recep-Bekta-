@@ -110,6 +110,8 @@ SATIS KURALLARI:
 const KARSILAMA_METNI =
   "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin.";
 
+const OWNER_PHONE = "905373630608"; // Recep Bektas - bot bildirimlerini alir
+
 const KATALOG_URLS = [
   "https://nwhuoyzezgrsilvwjohu.supabase.co/storage/v1/object/public/katalog/borular.jpg",
   "https://nwhuoyzezgrsilvwjohu.supabase.co/storage/v1/object/public/katalog/kasa_buat.jpg",
@@ -383,6 +385,17 @@ async function sendWhatsApp(phone, text) {
   if (!res.ok) throw new Error("WasenderAPI: " + res.status);
 }
 
+async function notifyOwner(mesaj) {
+  try {
+    const zaman = new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+    await fetch("https://www.wasenderapi.com/api/send-message", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + process.env.WASENDER_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ to: OWNER_PHONE, text: "BOT UYARI [" + zaman + "]: " + mesaj }),
+    });
+  } catch { /* bildirim gonderilemese de bot calismaya devam eder */ }
+}
+
 async function sendImageWithRetry(phone, imageUrl, label) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -459,6 +472,9 @@ async function handleWebhook(body, query, headers) {
     return;
   }
 
+  // Sahibin kendi mesajlarini isleme (bildirim dongusunu onler)
+  if (phone === OWNER_PHONE) return;
+
   // Webhook secret kontrolü
   const webhookSecret = process.env.WEBHOOK_SECRET;
   if (webhookSecret) {
@@ -498,6 +514,7 @@ async function handleWebhook(body, query, headers) {
     botResponse = await generateResponse(phone, message);
   } catch (aiErr) {
     console.error("AI hatasi:", aiErr.message);
+    await notifyOwner("AI yanit veremedi! Musteri: " + phone + " | " + aiErr.message.slice(0, 80));
     await sendKatalogAndGreeting(phone);
     await saveConversation(phone, message, KARSILAMA_METNI);
     return;
@@ -554,9 +571,12 @@ module.exports = async (req, res) => {
     await handleWebhook(body, req.query || {}, req.headers || {});
   } catch (error) {
     console.error("Webhook hatasi:", error.message);
+    const phone = extractPhone(body);
+    await notifyOwner("Kritik hata!" + (phone ? " Musteri: " + phone : "") + " | " + error.message.slice(0, 100));
     try {
-      const phone = extractPhone(body);
-      if (phone) await sendWhatsApp(phone, "Mesajinizi aldim, en kisa surede donuyorum. Bilgi icin: +90 537 363 06 08");
+      if (phone && phone !== OWNER_PHONE) {
+        await sendWhatsApp(phone, "Mesajinizi aldim, en kisa surede donuyorum. Bilgi icin: +90 537 363 06 08");
+      }
     } catch {}
   }
 
