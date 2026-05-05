@@ -382,9 +382,16 @@ async function sendWhatsApp(phone, text) {
 }
 
 async function sendKatalogAndGreeting(phone) {
-  await Promise.all(KATALOG_URLS.map(url =>
-    sendImage(phone, url).catch(e => console.error("Gorsel hatasi:", e.message))
-  ));
+  try { await sendImage(phone, KATALOG_URLS[0]); } catch (e) { console.error("Gorsel1 hatasi:", e.message); }
+  await sleep(2000);
+  try {
+    await sendImage(phone, KATALOG_URLS[1]);
+  } catch (e) {
+    console.error("Gorsel2 hatasi, yeniden deneniyor:", e.message);
+    await sleep(2000);
+    try { await sendImage(phone, KATALOG_URLS[1]); } catch (e2) { console.error("Gorsel2 retry hatasi:", e2.message); }
+  }
+  await sleep(1000);
   try { await sendWhatsApp(phone, KARSILAMA_METNI); } catch (e) { console.error("Karsilama hatasi:", e.message); }
 }
 
@@ -480,9 +487,9 @@ async function handleWebhook(body, query, headers) {
     .trim();
 
   if (sendKatalog) {
-    await Promise.all(KATALOG_URLS.map(url =>
-      sendImage(phone, url).catch(e => console.error("Gorsel hatasi:", e.message))
-    ));
+    await sendKatalogAndGreeting(phone);
+    await saveConversation(phone, message, KARSILAMA_METNI);
+    return;
   }
 
   if (quoteData) {
