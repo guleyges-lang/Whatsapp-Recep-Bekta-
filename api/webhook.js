@@ -400,9 +400,9 @@ async function sendImageWithRetry(phone, imageUrl, label) {
 async function sendKatalogAndGreeting(phone) {
   console.log("Katalog gonderimi basliyor:", phone);
   await sendImageWithRetry(phone, KATALOG_URLS[0], "Gorsel1");
-  await sleep(1500);
+  await sleep(4000);
   await sendImageWithRetry(phone, KATALOG_URLS[1], "Gorsel2");
-  await sleep(1000);
+  await sleep(4000);
   try {
     await sendWhatsApp(phone, KARSILAMA_METNI);
     console.log("Karsilama metni gonderildi");
