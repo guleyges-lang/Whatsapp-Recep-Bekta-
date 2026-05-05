@@ -401,13 +401,23 @@ async function sendKatalogAndGreeting(phone) {
   console.log("Katalog gonderimi basliyor:", phone);
   await sendImageWithRetry(phone, KATALOG_URLS[0], "Gorsel1");
   await sleep(4000);
-  await sendImageWithRetry(phone, KATALOG_URLS[1], "Gorsel2");
-  await sleep(4000);
+  // 2. gorsel + karsilama metni ayni mesajda (caption olarak) - 3 mesaj yerine 2 mesaj
   try {
-    await sendWhatsApp(phone, KARSILAMA_METNI);
-    console.log("Karsilama metni gonderildi");
+    const res = await fetch("https://www.wasenderapi.com/api/send-message", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + process.env.WASENDER_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ to: phone, imageUrl: KATALOG_URLS[1], text: KARSILAMA_METNI }),
+    });
+    const bodyText = await res.text();
+    console.log("Gorsel2+metin yaniti " + res.status + ":", bodyText.slice(0, 200));
+    if (!res.ok) throw new Error("WasenderAPI gorsel2+metin " + res.status);
+    console.log("Gorsel2 ve karsilama metni gonderildi");
   } catch (e) {
-    console.error("Karsilama hatasi:", e.message);
+    console.error("Gorsel2+metin hatasi:", e.message);
+    // Fallback: gorsel ve metni ayri ayri gonder
+    await sendImageWithRetry(phone, KATALOG_URLS[1], "Gorsel2-fallback");
+    await sleep(5000);
+    try { await sendWhatsApp(phone, KARSILAMA_METNI); } catch (e2) { console.error("Karsilama fallback hatasi:", e2.message); }
   }
 }
 
