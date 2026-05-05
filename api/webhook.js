@@ -517,10 +517,9 @@ module.exports = async (req, res) => {
     return res.status(200).send("ok");
   }
 
-  // WasenderAPI'ye hemen 200 döndür, arka planda işle
-  res.status(200).send("ok");
-
-  const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+  const body = typeof req.body === "string"
+    ? JSON.parse(req.body || "{}")
+    : (req.body || {});
 
   try {
     await handleWebhook(body, req.query || {}, req.headers || {});
@@ -531,4 +530,6 @@ module.exports = async (req, res) => {
       if (phone) await sendWhatsApp(phone, "Mesajinizi aldim, en kisa surede donuyorum. Bilgi icin: +90 537 363 06 08");
     } catch {}
   }
+
+  return res.status(200).send("ok");
 };
