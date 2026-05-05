@@ -360,7 +360,9 @@ async function sendImage(phone, imageUrl) {
     headers: { Authorization: "Bearer " + process.env.WASENDER_API_KEY, "Content-Type": "application/json" },
     body: JSON.stringify({ to: phone, imageUrl }),
   });
-  console.log("Resim yaniti: " + res.status);
+  const bodyText = await res.text();
+  console.log("Resim yaniti " + res.status + ":", bodyText.slice(0, 200));
+  if (!res.ok) throw new Error("WasenderAPI resim " + res.status + ": " + bodyText.slice(0, 100));
 }
 
 async function sendDocument(phone, pdfUrl, filename) {
@@ -381,18 +383,32 @@ async function sendWhatsApp(phone, text) {
   if (!res.ok) throw new Error("WasenderAPI: " + res.status);
 }
 
-async function sendKatalogAndGreeting(phone) {
-  try { await sendImage(phone, KATALOG_URLS[0]); } catch (e) { console.error("Gorsel1 hatasi:", e.message); }
-  await sleep(2000);
-  try {
-    await sendImage(phone, KATALOG_URLS[1]);
-  } catch (e) {
-    console.error("Gorsel2 hatasi, yeniden deneniyor:", e.message);
-    await sleep(2000);
-    try { await sendImage(phone, KATALOG_URLS[1]); } catch (e2) { console.error("Gorsel2 retry hatasi:", e2.message); }
+async function sendImageWithRetry(phone, imageUrl, label) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await sendImage(phone, imageUrl);
+      console.log(label + " gonderildi (deneme " + attempt + ")");
+      return;
+    } catch (e) {
+      console.error(label + " hatasi (deneme " + attempt + "):", e.message);
+      if (attempt < 3) await sleep(3000);
+    }
   }
+  console.error(label + " 3 denemede de gonderilemedi");
+}
+
+async function sendKatalogAndGreeting(phone) {
+  console.log("Katalog gonderimi basliyor:", phone);
+  await sendImageWithRetry(phone, KATALOG_URLS[0], "Gorsel1");
+  await sleep(1500);
+  await sendImageWithRetry(phone, KATALOG_URLS[1], "Gorsel2");
   await sleep(1000);
-  try { await sendWhatsApp(phone, KARSILAMA_METNI); } catch (e) { console.error("Karsilama hatasi:", e.message); }
+  try {
+    await sendWhatsApp(phone, KARSILAMA_METNI);
+    console.log("Karsilama metni gonderildi");
+  } catch (e) {
+    console.error("Karsilama hatasi:", e.message);
+  }
 }
 
 async function generateResponse(phone, message) {
