@@ -403,10 +403,16 @@ async function getNextQuoteNumber() {
 }
 
 async function uploadPDF(buffer, filename) {
-  const { error } = await supabase.storage.from("quotes").upload(filename, buffer, { contentType: "application/pdf", upsert: true });
-  if (error) throw new Error("Storage: " + error.message);
-  const { data } = supabase.storage.from("quotes").getPublicUrl(filename);
-  return data.publicUrl;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const { error } = await supabase.storage.from("quotes").upload(filename, buffer, { contentType: "application/pdf", upsert: true });
+    if (!error) {
+      const { data } = supabase.storage.from("quotes").getPublicUrl(filename);
+      return data.publicUrl;
+    }
+    console.error("PDF yukleme hatasi (deneme " + attempt + "):", error.message);
+    if (attempt < 3) await sleep(2000);
+  }
+  throw new Error("PDF 3 denemede de yuklenemedi");
 }
 
 async function saveQuote(phone, firma, total, pdfUrl) {
@@ -435,6 +441,20 @@ async function sendDocument(phone, pdfUrl, filename) {
     body: JSON.stringify({ to: phone, documentUrl: pdfUrl, fileName: filename, text: "Fiyat teklifiniz ektedir." }),
   });
   if (!res.ok) throw new Error("WasenderAPI belge: " + res.status);
+}
+
+async function sendDocumentWithRetry(phone, pdfUrl, filename) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await sendDocument(phone, pdfUrl, filename);
+      console.log("PDF belge gonderildi (deneme " + attempt + ")");
+      return;
+    } catch (e) {
+      console.error("PDF belge hatasi (deneme " + attempt + "):", e.message);
+      if (attempt < 3) await sleep(3000);
+    }
+  }
+  throw new Error("PDF 3 denemede de gonderilemedi");
 }
 
 async function sendWhatsApp(phone, text) {
@@ -851,7 +871,7 @@ async function handleWebhook(body, query, headers) {
       const filename = "Fiyat_Teklifimiz_" + tarih.replace(/\./g, "") + "_" + quoteNumber + ".pdf";
       const pdfUrl = await uploadPDF(pdfBuffer, filename);
       await saveQuote(phone, quoteData.firma, quoteData.items.reduce((s, i) => s + i.total, 0), pdfUrl);
-      await sendDocument(phone, pdfUrl, filename);
+      await sendDocumentWithRetry(phone, pdfUrl, filename);
       await saveConversation(phone, message, cleanText);
     } catch (pdfErr) {
       console.error("PDF hatasi:", pdfErr.message);
@@ -889,6 +909,9 @@ module.exports = async (req, res) => {
     ? JSON.parse(req.body || "{}")
     : (req.body || {});
 
+  // WasenderAPI'nin tekrar denemesini onlemek icin hemen 200 don
+  res.status(200).send("ok");
+
   try {
     await handleWebhook(body, req.query || {}, req.headers || {});
   } catch (error) {
@@ -901,6 +924,4 @@ module.exports = async (req, res) => {
       }
     } catch {}
   }
-
-  return res.status(200).send("ok");
 };
