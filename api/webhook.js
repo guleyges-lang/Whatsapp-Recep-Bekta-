@@ -616,14 +616,26 @@ async function handleWebhook(body, query, headers) {
       await saveConversation(phone, message, cleanText);
     } catch (pdfErr) {
       console.error("PDF hatasi:", pdfErr.message);
-      try { await sendWhatsApp(phone, cleanText || "Fiyat teklifinizi hazirladim. Detaylar icin arayin: +90 537 363 06 08"); } catch {}
+      await notifyOwner("PDF gonderilemedi! Musteri: " + phone + " | Firma: " + quoteData.firma + " | Hata: " + pdfErr.message.slice(0, 80));
+      try {
+        await sendWhatsApp(phone, "Fiyat teklifinizi hazirladim ancak PDF gonderiminde sorun olustu. Lutfen su numarayi arayin: +90 537 363 06 08");
+      } catch {}
       await saveConversation(phone, message, cleanText);
     }
   } else {
-    if (cleanText) {
-      try { await sendWhatsApp(phone, cleanText); } catch (e) { console.error("Metin hatasi:", e.message); }
+    // AI [TEKLIF] blogu olusturamadiysa ama "PDF gonderiyorum" yazdiysa duzelt
+    const duzeltilmisMetin = cleanText
+      .replace(/fiyat teklifinizi hazırladım[^.]*pdf[^.]*\./gi, "")
+      .replace(/pdf olarak gönderiyorum\.?/gi, "")
+      .trim();
+    const gonderilenMetin = duzeltilmisMetin || cleanText;
+    if (gonderilenMetin) {
+      if (!duzeltilmisMetin && /pdf/i.test(cleanText)) {
+        console.log("AI [TEKLIF] blogu olusturamadi ama PDF yazdi, duzeltiliyor:", cleanText.slice(0, 100));
+      }
+      try { await sendWhatsApp(phone, gonderilenMetin); } catch (e) { console.error("Metin hatasi:", e.message); }
     }
-    await saveConversation(phone, message, cleanText);
+    await saveConversation(phone, message, gonderilenMetin);
   }
 }
 
