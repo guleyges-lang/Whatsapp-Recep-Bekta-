@@ -546,7 +546,15 @@ async function handleWebhook(body, query, headers) {
 
   console.log("AI: " + botResponse.slice(0, 100));
 
-  const sendKatalog = /\[KATALOG\]|\bKATALOG\b/.test(botResponse);
+  let sendKatalog = /\[KATALOG\]|\bKATALOG\b/.test(botResponse);
+
+  // Musteri fiyat/urun/miktar soruyorsa katalog gonderme - AI yanlis karar verdi demektir
+  const fiyatTalebi = /fiyat|teklif|ne kadar|kaç (lira|tl|para)|\d+\s*(mt|metre|adet|ad\b)|(\d+mm)|boru|buat|kasa|kangal|sigorta kutusu|duy|dubel|takoz/i.test(message);
+  if (sendKatalog && fiyatTalebi) {
+    console.log("Fiyat/urun talebi tespit edildi, katalog atlanıyor:", message.slice(0, 80));
+    sendKatalog = false;
+  }
+
   const quoteData = parseQuote(botResponse);
   const cleanText = botResponse
     .replace(/\[?KATALOG\]?/g, "")
@@ -556,7 +564,6 @@ async function handleWebhook(body, query, headers) {
   if (sendKatalog) {
     const bugunGonderildi = await katalogBugunGonderildiMi(phone);
     if (bugunGonderildi) {
-      // Katalog bugun zaten gonderildi - sadece karsilama metnini gonder
       console.log("Katalog bugun zaten gonderildi, tekrar gonderilmiyor:", phone);
       const tekrarMetin = cleanText || "Nasil yardimci olabilirim?";
       try { await sendWhatsApp(phone, tekrarMetin); } catch (e) { console.error("Tekrar metin hatasi:", e.message); }
