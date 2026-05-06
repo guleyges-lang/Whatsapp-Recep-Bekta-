@@ -927,9 +927,6 @@ module.exports = async (req, res) => {
     ? JSON.parse(req.body || "{}")
     : (req.body || {});
 
-  // WasenderAPI'nin tekrar denemesini onlemek icin hemen 200 don
-  res.status(200).send("ok");
-
   try {
     await handleWebhook(body, req.query || {}, req.headers || {});
   } catch (error) {
@@ -942,4 +939,6 @@ module.exports = async (req, res) => {
       }
     } catch {}
   }
+
+  return res.status(200).send("ok");
 };
