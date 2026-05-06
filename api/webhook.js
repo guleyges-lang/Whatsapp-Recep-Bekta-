@@ -221,15 +221,12 @@ async function getHistory(phone) {
   }
 }
 
-async function katalogBugunGonderildiMi(phone) {
+async function katalogGonderildiMi(phone) {
   try {
-    const bugunBaslangic = new Date();
-    bugunBaslangic.setHours(0, 0, 0, 0);
     const { count } = await supabase
       .from("conversations")
       .select("*", { count: "exact", head: true })
-      .eq("phone", phone)
-      .gte("created_at", bugunBaslangic.toISOString());
+      .eq("phone", phone);
     return (count || 0) > 0;
   } catch {
     return false;
@@ -527,6 +524,10 @@ async function handleWebhook(body, query, headers) {
   const message = sanitizeInput(rawMessage);
 
   if (!message) {
+    if (await katalogGonderildiMi(phone)) {
+      console.log("Medya mesaji ama katalog zaten gonderilmis:", phone);
+      return;
+    }
     console.log("Metin yok (gorsel/ses/belge), katalog gonderiliyor:", phone);
     await sendKatalogAndGreeting(phone);
     await saveConversation(phone, "[MEDYA]", KARSILAMA_METNI);
@@ -547,8 +548,12 @@ async function handleWebhook(body, query, headers) {
   } catch (aiErr) {
     console.error("AI hatasi:", aiErr.message);
     await notifyOwner("AI yanit veremedi! Musteri: " + phone + " | " + aiErr.message.slice(0, 80));
-    await sendKatalogAndGreeting(phone);
-    await saveConversation(phone, message, KARSILAMA_METNI);
+    if (await katalogGonderildiMi(phone)) {
+      try { await sendWhatsApp(phone, "Mesajinizi aldim, en kisa surede donuyorum."); } catch {}
+    } else {
+      await sendKatalogAndGreeting(phone);
+      await saveConversation(phone, message, KARSILAMA_METNI);
+    }
     return;
   }
 
@@ -570,9 +575,8 @@ async function handleWebhook(body, query, headers) {
     .trim();
 
   if (sendKatalog) {
-    const bugunGonderildi = await katalogBugunGonderildiMi(phone);
-    if (bugunGonderildi) {
-      console.log("Katalog bugun zaten gonderildi, tekrar gonderilmiyor:", phone);
+    if (await katalogGonderildiMi(phone)) {
+      console.log("Katalog zaten gonderilmis, tekrar gonderilmiyor:", phone);
       const tekrarMetin = cleanText || "Nasil yardimci olabilirim?";
       try { await sendWhatsApp(phone, tekrarMetin); } catch (e) { console.error("Tekrar metin hatasi:", e.message); }
       await saveConversation(phone, message, tekrarMetin);
