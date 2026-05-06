@@ -53,24 +53,33 @@ Norm Kasa(2.50→1.38), Plastik Takoz(4.00→2.20), Sekizlik Dubel(0.18→0.10)
 1-2 li Sigorta Kutusu(15.20→8.36), Plastik Tij Duy(15.00→8.25), Plastik Duy(18.00→9.90)
 
 KONUSMA AKISI:
-1. Asagidaki durumlarin HERHANGI birinde [KATALOG] gonder:
-   - Musteri ilk kez yazdiginda (konusma gecmisi yoksa)
-   - Musteri "merhaba", "selam", "iyi gunler", "nasil yardimci olabilirsiniz", "bilgi almak istiyorum", "urunleriniz hakkinda", "katalog", "ne satiyorsunuz" gibi bir seylama veya bilgi talep mesaji gonderdiginde
-   - Musteri urunler veya katalog hakkinda bilgi istediginde
+1. [KATALOG] SADECE su tek durumda gonder:
+   - Musteri hic konusma gecmisi yokken SADECE selamlasma veya genel bilgi talebi yazdiginda
+   - Ornek [KATALOG] durumlari: "merhaba", "selam", "iyi gunler", "bilgi almak istiyorum", "ne satiyorsunuz", "katalog gonderir misiniz"
 
-   Bu durumlarda:
+   [KATALOG] KESINLIKLE GONDERME su durumlarda:
+   - Musteri bir urun adi (boru, buat, kasa vb.) yaziyorsa
+   - Musteri miktar yaziyorsa (100 adet, 1500 mt vb.)
+   - Musteri "fiyat", "teklif", "ne kadar", "fiyati nedir" diyorsa
+   - Konusma gecmisinde daha onceki mesajlar varsa (zaten tanitildiniz)
+
+   [KATALOG] gonderilecekse:
    - Yanitinin EN BASINA tam olarak su 9 karakteri yaz: [KATALOG]
    - Ardindan hemen su karsilama mesajini yaz (fiyat hesaplama YAPMA, sadece bu metni yaz):
      "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin."
    - ORNEK dogru cikti: [KATALOG]Merhaba! Guley Plastik'e hos geldiniz...
    - YANLIS cikti ornekleri: "KATALOG Merhaba...", "[ KATALOG ] Merhaba...", fiyat hesabi eklemek
-2. Musteri firma adini verdikten sonra urunleri ve miktarlari sor ya da gelen soruyu cevapla.
-3. Musteri urun ve miktar belirttiginde fiyat teklifi hazirla.
-4. [KATALOG] isaretini yukardaki durumlarin DISINDA kullanma. Her mesajda kullanma.
-5. Karsilama mesajina ASLA fiyat hesabi, urun miktari veya toplam tutar ekleme.
+
+2. Musteri urun adi + miktar yazarak fiyat istediginde DIREKT [TEKLIF] hazirla. Once katalog gonderme, once soru sorma — hemen teklifi hazirla.
+   - Firma adi verilmemisse FIRMA alanina "Musteri" yaz, mesajin sonuna "Firma adinizi ogrenebilir miyim?" ekle
+   - Musteri miktarsiz fiyat sorarsa (ornek: "14mm boru fiyati nedir") kisa fiyat bilgisi ver, miktar iste
+
+3. [KATALOG] isaretini yukardaki tek durumun DISINDA ASLA kullanma.
+4. Karsilama mesajina ASLA fiyat hesabi, urun miktari veya toplam tutar ekleme.
 
 FIYAT TEKLIFI KURALLARI:
 - SADECE musterinin istedigi urunler icin teklif ver
+- NetFiyat = ListeFiyati x 0.55 (yani %45 indirim)
 - Fiyat teklifi hazirlarken ONCE su yapılandırılmış bloku yaz (bu musteriye gosterilmez, PDF olusturmak icin kullanilir):
 
 [TEKLIF]
@@ -201,6 +210,21 @@ async function getHistory(phone) {
   } catch (e) {
     console.error("Gecmis yuklenemedi:", e.message);
     return [];
+  }
+}
+
+async function katalogBugunGonderildiMi(phone) {
+  try {
+    const bugunBaslangic = new Date();
+    bugunBaslangic.setHours(0, 0, 0, 0);
+    const { count } = await supabase
+      .from("conversations")
+      .select("*", { count: "exact", head: true })
+      .eq("phone", phone)
+      .gte("created_at", bugunBaslangic.toISOString());
+    return (count || 0) > 0;
+  } catch {
+    return false;
   }
 }
 
@@ -530,8 +554,17 @@ async function handleWebhook(body, query, headers) {
     .trim();
 
   if (sendKatalog) {
-    await sendKatalogAndGreeting(phone);
-    await saveConversation(phone, message, KARSILAMA_METNI);
+    const bugunGonderildi = await katalogBugunGonderildiMi(phone);
+    if (bugunGonderildi) {
+      // Katalog bugun zaten gonderildi - sadece karsilama metnini gonder
+      console.log("Katalog bugun zaten gonderildi, tekrar gonderilmiyor:", phone);
+      const tekrarMetin = cleanText || "Nasil yardimci olabilirim?";
+      try { await sendWhatsApp(phone, tekrarMetin); } catch (e) { console.error("Tekrar metin hatasi:", e.message); }
+      await saveConversation(phone, message, tekrarMetin);
+    } else {
+      await sendKatalogAndGreeting(phone);
+      await saveConversation(phone, message, KARSILAMA_METNI);
+    }
     return;
   }
 
