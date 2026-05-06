@@ -1,9 +1,9 @@
 const { createClient } = require("@supabase/supabase-js");
 const pdfMake = require("pdfmake/build/pdfmake");
-require("pdfmake/build/vfs_fonts");
-if (global.pdfMake && global.pdfMake.vfs) {
-  pdfMake.vfs = global.pdfMake.vfs;
-}
+const vfsFonts = require("pdfmake/build/vfs_fonts");
+pdfMake.vfs = (vfsFonts && vfsFonts.pdfMake && vfsFonts.pdfMake.vfs)
+  ? vfsFonts.pdfMake.vfs
+  : (global.pdfMake && global.pdfMake.vfs) || {};
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -283,7 +283,9 @@ function fmtNum(n) {
 }
 
 async function generatePDF(quoteData, quoteNumber, tarih) {
+  console.log("PDF olusturuluyor, kalem sayisi:", quoteData.items.length, "vfs yuklu:", Object.keys(pdfMake.vfs || {}).length > 0);
   return new Promise((resolve, reject) => {
+    const pdfTimeout = setTimeout(() => reject(new Error("PDF timeout - pdfmake yanit vermedi")), 25000);
     try {
       const kdvHaric = Math.round(quoteData.items.reduce((s, i) => s + i.total, 0) * 100) / 100;
       const kdvTutar = Math.round(kdvHaric * 0.2 * 100) / 100;
@@ -365,10 +367,13 @@ async function generatePDF(quoteData, quoteNumber, tarih) {
         defaultStyle: { font: "Roboto" },
       };
       pdfMake.createPdf(docDef).getBuffer((buffer) => {
+        clearTimeout(pdfTimeout);
         if (!buffer) { reject(new Error("PDF buffer bos")); return; }
+        console.log("PDF basariyla olusturuldu, boyut:", buffer.length);
         resolve(Buffer.from(buffer));
       });
     } catch (e) {
+      clearTimeout(pdfTimeout);
       reject(e);
     }
   });
@@ -581,7 +586,7 @@ async function handleWebhook(body, query, headers) {
     return;
   }
 
-  console.log("AI: " + botResponse.slice(0, 100));
+  console.log("AI yanit (tam):", botResponse.slice(0, 400));
 
   let sendKatalog = /\[KATALOG\]|\bKATALOG\b/.test(botResponse);
 
