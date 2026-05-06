@@ -24,7 +24,7 @@ KONUŞMA TARZI - ÇOK ÖNEMLİ:
 - Gerçek bir Türk satıcı gibi yaz, robotik kalıp YAPMA
 - Kısa ve doğal cümleler kur. WhatsApp mesajı gibi yaz
 - Emoji kullanma
-- Yapay zeka olduğunu soran müşteriye: "Hayır, ben Recep, Güley Plastik satış ekibindenim" de
+- Yapay zeka olduğunu soran müşteriye: "Hayır, ben Recep, Güley Plastik satış ekibindenim" de. Bunu SADECE müşteri "yapay zeka mısın", "robot musun", "AI mısın" diye sorarsa yaz. Başka mesajlarda bu cümleyi KULLANMA.
 
 TEKRAR ETME KURALI - EN ÖNEMLİ KURAL:
 - Konusma gecmisine bak. Daha once yazdigin hicbir seyi BIR DAHA YAZMA
@@ -502,6 +502,58 @@ const GROQ_MODELLER = [
   "gemma2-9b-it",
 ];
 
+const URUN_FIYAT_LISTESI = `KANGAL BORU (MT fiyati):
+Siyah 6Atu: 14mm=4.26, 16mm=5.02, 18mm=5.80, 20mm=6.94, 25mm=10.78
+Siyah 10Atu: 14mm=5.02, 16mm=5.82, 18mm=6.58, 20mm=8.22, 25mm=11.30
+Turuncu 6Atu: 14mm=4.52, 16mm=5.34, 18mm=6.16, 20mm=7.16, 25mm=11.46
+Turuncu 10Atu: 14mm=5.34, 16mm=6.18, 18mm=6.84, 20mm=8.54, 25mm=11.72
+Mavi 6Atu: 14mm=4.42, 16mm=5.22, 18mm=6.02, 20mm=7.20, 25mm=11.20
+Mavi 10Atu: 14mm=5.22, 16mm=6.04, 18mm=6.84, 20mm=8.54, 25mm=11.72
+BUAT ve KASALAR (AD fiyati):
+Kapakli Kare Buat: 80x80=10.00, 100x100=13.00, 120x120=14.00, 150x150=17.00, 200x200=28.00
+Kapaksiz Kare Buat: 80x80=8.00, 100x100=9.00, 120x120=10.60, 150x150=13.60, 200x200=20.40
+Kare Buat Kapagi: 80x80=4.20, 100x100=4.70, 120x120=5.80, 150x150=6.40, 200x200=16.00
+Bombeli Luks Buat=2.60, Gecmeli Derin Kasa=2.70, Norm Buat=4.60, Tunel Beton Buat=6.00
+Norm Kasa=2.50, Plastik Takoz=4.00, Sekizlik Dubel=0.18
+1-2li Sigorta Kutusu=15.20, Plastik Tij Duy=15.00, Plastik Duy=18.00`;
+
+async function generateQuoteOnly(message) {
+  const prompt = `Musteri su urunleri istiyor: "${message}"
+
+Asagidaki urun fiyat listesini kullanarak SADECE su formati yaz, baska hicbir cumle ekleme:
+
+[TEKLIF]
+FIRMA:Musteri
+KALEM:UrunAdi|Miktar|Birim|ListeFiyati|NetFiyat|Toplam
+[/TEKLIF]
+
+Kurallar:
+- NetFiyat = ListeFiyati x 0.55 (yuzde 45 indirim)
+- Toplam = Miktar x NetFiyat
+- Birim: boru icin MT, diger urunler icin AD
+- 1 top = 100 MT
+- Sadece [TEKLIF] blogu yaz, baska hicbir sey yazma
+
+${URUN_FIYAT_LISTESI}`;
+
+  for (const model of GROQ_MODELLER) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + process.env.GROQ_API_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], max_tokens: 300, temperature: 0.1 }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return data.choices[0].message.content.trim();
+      }
+      if (res.status === 429) break;
+      if (attempt === 0) await sleep(2000);
+    }
+  }
+  return null;
+}
+
 async function generateResponse(phone, message) {
   const history = await getHistory(phone);
   const messages = [
@@ -611,7 +663,23 @@ async function handleWebhook(body, query, headers) {
     sendKatalog = false;
   }
 
-  const quoteData = parseQuote(botResponse);
+  let quoteData = parseQuote(botResponse);
+
+  // AI [TEKLIF] blogu olusturamadiysa ve fiyat talebi varsa, odakli ikinci cagri yap
+  if (!quoteData && fiyatTalebi && !sendKatalog) {
+    console.log("AI [TEKLIF] olusturamadi, odakli teklif cagrisı yapiliyor");
+    try {
+      const teklifResponse = await generateQuoteOnly(message);
+      if (teklifResponse) {
+        console.log("Odakli teklif yaniti:", teklifResponse.slice(0, 200));
+        quoteData = parseQuote(teklifResponse);
+        if (quoteData) console.log("Teklif basariyla alindi:", quoteData.items.length, "kalem");
+      }
+    } catch (e) {
+      console.error("Odakli teklif hatasi:", e.message);
+    }
+  }
+
   const cleanText = botResponse
     .replace(/\[?KATALOG\]?/g, "")
     .replace(/\[TEKLIF\][\s\S]*?\[\/TEKLIF\]/g, "")
