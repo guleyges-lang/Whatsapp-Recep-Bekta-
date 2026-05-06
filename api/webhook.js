@@ -93,6 +93,14 @@ Sonra kisa bir mesaj yaz: "Fiyat teklifinizi hazirladim, PDF olarak gonderiyorum
 - Musteri "kablo", "elektrik kablosu", "tel" gibi seyler sorarsa: "Kablo imalatimiz bulunmuyor, elektrik borusu imalatimiz var." de ve boru urunlerimizi oner
 - Biz BORU ve BUAT/KASA imalatcisiyiz, kablo satmiyoruz
 
+KANGAL BORU SATIS BIRIMI:
+- Borular "top" veya "mt (metre)" olarak satilebilir
+- 1 top = 100 mt (yuz metre)
+- Musteri "top" cinsinden isterse: kaç top istedigini mt'ye cevir (ornek: 10 top = 1000 mt)
+- Fiyat teklifinde birim olarak "MT" kullan, miktari mt olarak yaz (10 top ise 1000 mt yaz)
+- Musteri "10 top 14mm boru" derse → teklif 1000 MT olarak hazirla
+- Teklifin altindaki kisa mesajda "10 top (1000 mt)" seklinde belirtebilirsin
+
 ÖDEME:
 - Musteri "kapida odeme", "kapi odeme", "kapida odeme var mi" gibi seyler sorarsa: "Kapida odeme bulunmuyor, biz imalatciyiz. Odeme nakit havale pesindir." de
 
@@ -549,7 +557,7 @@ async function handleWebhook(body, query, headers) {
   let sendKatalog = /\[KATALOG\]|\bKATALOG\b/.test(botResponse);
 
   // Musteri fiyat/urun/miktar soruyorsa katalog gonderme - AI yanlis karar verdi demektir
-  const fiyatTalebi = /fiyat|teklif|ne kadar|kaç (lira|tl|para)|\d+\s*(mt|metre|adet|ad\b)|(\d+mm)|boru|buat|kasa|kangal|sigorta kutusu|duy|dubel|takoz/i.test(message);
+  const fiyatTalebi = /fiyat|teklif|ne kadar|kaç (lira|tl|para)|\d+\s*(mt|metre|adet|ad\b|top)|(\d+mm)|\d+\s*top\b|boru|buat|kasa|kangal|sigorta kutusu|duy|dubel|takoz/i.test(message);
   if (sendKatalog && fiyatTalebi) {
     console.log("Fiyat/urun talebi tespit edildi, katalog atlanıyor:", message.slice(0, 80));
     sendKatalog = false;
