@@ -427,6 +427,24 @@ async function saveQuote(phone, firma, total, pdfUrl) {
   }
 }
 
+async function teklifAyniMiKontrol(phone, toplam) {
+  try {
+    const ikiSaatOnce = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const { data } = await supabase
+      .from("quotes")
+      .select("total_amount")
+      .eq("phone", phone)
+      .gte("created_at", ikiSaatOnce)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (!data || data.length === 0) return false;
+    const sonToplam = Math.round((data[0].total_amount || 0) * 100) / 100;
+    return Math.abs(sonToplam - Math.round(toplam * 100) / 100) < 0.01;
+  } catch {
+    return false;
+  }
+}
+
 async function sendImage(phone, imageUrl) {
   const res = await fetch("https://www.wasenderapi.com/api/send-message", {
     method: "POST",
@@ -844,9 +862,12 @@ async function handleWebhook(body, query, headers) {
     sendKatalog = false;
   }
 
+  // Teklif icin hem fiyat talebi hem de sayisal miktar sarttir (miktar yoksa PDF gonderme)
+  const hasMiktar = /\d+\s*(mt|metre|m(?!\w)|adet|ad(?!\w)|top(?!\w))/i.test(message);
+
   let quoteData = null;
 
-  if (fiyatTalebi && !sendKatalog) {
+  if (fiyatTalebi && hasMiktar && !sendKatalog) {
     quoteData = programmaticQuote(message);
     if (!quoteData) {
       quoteData = parseQuote(botResponse);
@@ -864,9 +885,16 @@ async function handleWebhook(body, query, headers) {
         }
       }
     }
-  } else {
-    quoteData = parseQuote(botResponse);
+    // Ayni teklif son 2 saat icerisinde gonderildiyse tekrar gonderme
+    if (quoteData) {
+      const currentTotal = quoteData.items.reduce((s, i) => s + i.total, 0);
+      if (await teklifAyniMiKontrol(phone, currentTotal)) {
+        console.log("Ayni teklif son 2 saatte gonderilmis, PDF atlaniyor:", phone);
+        quoteData = null;
+      }
+    }
   }
+  // Not: miktar belirtilmediyse veya fiyat talebi yoksa AI cevabindan teklif parse edilmez
 
   const cleanText = botResponse
     .replace(/\[?KATALOG\]?/g, "")
