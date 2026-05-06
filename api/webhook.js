@@ -82,17 +82,31 @@ KONUSMA AKISI:
 3. [KATALOG] isaretini yukardaki tek durumun DISINDA ASLA kullanma.
 4. Karsilama mesajina ASLA fiyat hesabi, urun miktari veya toplam tutar ekleme.
 
-FIYAT TEKLIFI KURALLARI:
-- SADECE musterinin istedigi urunler icin teklif ver
-- NetFiyat = ListeFiyati x 0.55 (yani %45 indirim)
-- Fiyat teklifi hazirlarken ONCE su yapılandırılmış bloku yaz (bu musteriye gosterilmez, PDF olusturmak icin kullanilir):
+FIYAT TEKLIFI KURALLARI - COK ONEMLI:
+- Musteri urun + miktar belirtirse MUTLAKA asagidaki formati kullan
+- NetFiyat = ListeFiyati x 0.55 (yani %45 indirim). Toplam = Miktar x NetFiyat
+- [TEKLIF] blogu OLMADAN "PDF gonderiyorum" YAZMA - bu sistemi bozar
 
+ZORUNLU FORMAT (tam olarak boyle yaz, baska turlu degil):
 [TEKLIF]
-FIRMA:Firma adi
+FIRMA:Musteri
 KALEM:Urun adi|Miktar|Birim|ListeFiyati|NetFiyat|Toplam
 [/TEKLIF]
+Fiyat teklifinizi hazirladim, PDF olarak gonderiyorum.
 
-Sonra kisa bir mesaj yaz: "Fiyat teklifinizi hazirladim, PDF olarak gonderiyorum."
+ORNEK DOGRU CEVAP (1500mt Turuncu 14mm 6Atu boru icin):
+[TEKLIF]
+FIRMA:Musteri
+KALEM:Turuncu Kangal Boru 14mm 6Atu|1500|MT|4.52|2.49|3735.00
+[/TEKLIF]
+Fiyat teklifinizi hazirladim, PDF olarak gonderiyorum.
+
+ORNEK YANLIS CEVAP (YAPMA):
+"Fiyat teklifinizi hazirladim, PDF olarak gonderiyorum." (teklif blogu olmadan bu cumlei yazma)
+
+- Firma adi bilinmiyorsa FIRMA:Musteri yaz
+- Her KALEM satiri: UrunAdi|Miktar|Birim|ListeFiyati|NetFiyat|Toplam (6 alan, | ile ayrılmış)
+- Birimleri dogru yaz: MT (metre), AD (adet)
 
 ÖNEMLI ÜRÜN UYARISI:
 - Musteri "kablo", "elektrik kablosu", "tel" gibi seyler sorarsa: "Kablo imalatimiz bulunmuyor, elektrik borusu imalatimiz var." de ve boru urunlerimizi oner
@@ -637,8 +651,10 @@ async function handleWebhook(body, query, headers) {
   } else {
     // AI [TEKLIF] blogu olusturamadiysa ama "PDF gonderiyorum" yazdiysa duzelt
     const duzeltilmisMetin = cleanText
-      .replace(/fiyat teklifinizi hazırladım[^.]*pdf[^.]*\./gi, "")
-      .replace(/pdf olarak gönderiyorum\.?/gi, "")
+      .replace(/fiyat teklifini[^.]*hazirladim[^.]*\./gi, "")
+      .replace(/fiyat teklifini[^.]*haz.rladim[^.]*\./gi, "")
+      .replace(/pdf olarak g.nderiyorum\.?/gi, "")
+      .replace(/pdf g.nderiyorum\.?/gi, "")
       .trim();
     const gonderilenMetin = duzeltilmisMetin || cleanText;
     if (gonderilenMetin) {
