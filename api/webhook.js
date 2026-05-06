@@ -464,6 +464,13 @@ async function sendKatalogAndGreeting(phone) {
   }
 }
 
+// Yedek model listesi - birincil rate limit yerse sıradaki denenir
+const GROQ_MODELLER = [
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant",
+  "gemma2-9b-it",
+];
+
 async function generateResponse(phone, message) {
   const history = await getHistory(phone);
   const messages = [
@@ -471,22 +478,26 @@ async function generateResponse(phone, message) {
     ...history,
     { role: "user", content: message },
   ];
-  const delays = [3000, 7000];
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: "Bearer " + process.env.GROQ_API_KEY, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages, max_tokens: 800, temperature: 0.7 }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return data.choices[0].message.content.trim();
+
+  for (const model of GROQ_MODELLER) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + process.env.GROQ_API_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ model, messages, max_tokens: 800, temperature: 0.7 }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (model !== GROQ_MODELLER[0]) console.log("Yedek model kullandi:", model);
+        return data.choices[0].message.content.trim();
+      }
+      const errText = await res.text();
+      console.error(`Groq ${model} deneme ${attempt + 1}: ${res.status} ${errText.slice(0, 80)}`);
+      if (res.status === 429) break; // Rate limit - bu modeli birak, yedege gec
+      if (attempt === 0) await sleep(3000);
     }
-    const errText = await res.text();
-    console.error(`Groq deneme ${attempt + 1} basarisiz: ${res.status} ${errText.slice(0, 100)}`);
-    if (attempt < 2) await sleep(delays[attempt]);
-    else throw new Error("Groq: " + errText);
   }
+  throw new Error("Tum Groq modelleri basarisiz");
 }
 
 async function handleWebhook(body, query, headers) {
