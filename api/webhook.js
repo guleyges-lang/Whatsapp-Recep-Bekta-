@@ -249,23 +249,30 @@ async function saveConversation(phone, customerMessage, botResponse) {
 
 function parseQuote(text) {
   const match = text.match(/\[TEKLIF\]([\s\S]*?)\[\/TEKLIF\]/);
-  if (!match) return null;
+  if (!match) {
+    console.log("parseQuote: [TEKLIF] blogu bulunamadi");
+    return null;
+  }
   const lines = match[1].trim().split("\n").map((l) => l.trim()).filter(Boolean);
   const data = { firma: "Musteri", items: [] };
   for (const line of lines) {
-    if (line.startsWith("FIRMA:")) {
-      data.firma = line.slice(6).trim();
-    } else if (line.startsWith("KALEM:")) {
-      const parts = line.slice(6).split("|");
-      if (parts.length >= 6) {
+    if (/^FIRMA\s*:/i.test(line)) {
+      data.firma = line.replace(/^FIRMA\s*:\s*/i, "").trim() || "Musteri";
+    } else if (/^KALEM\s*:/i.test(line)) {
+      const kalemStr = line.replace(/^KALEM\s*:\s*/i, "");
+      const parts = kalemStr.split("|").map(p => p.trim());
+      if (parts.length >= 4) {
         const qty = parseFloat(parts[1]) || 0;
         const listPrice = parseFloat(parts[3]) || 0;
-        const netPrice = parseFloat(parts[4]) || 0;
+        const netPrice = parseFloat(parts[4]) || (listPrice * 0.55);
         const total = Math.round(qty * netPrice * 100) / 100;
-        data.items.push({ name: parts[0].trim(), qty, unit: parts[2].trim(), listPrice, netPrice, total });
+        data.items.push({ name: parts[0], qty, unit: parts[2] || "AD", listPrice, netPrice, total });
+      } else {
+        console.log("parseQuote: KALEM satiri eksik alan:", kalemStr);
       }
     }
   }
+  console.log("parseQuote sonuc: firma=" + data.firma + " kalem=" + data.items.length);
   return data.items.length > 0 ? data : null;
 }
 
