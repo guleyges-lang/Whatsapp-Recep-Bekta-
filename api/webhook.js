@@ -502,6 +502,141 @@ const GROQ_MODELLER = [
   "gemma2-9b-it",
 ];
 
+const URUN_LISTE_FIYATLARI = {
+  siyah_6_14: 4.26, siyah_6_16: 5.02, siyah_6_18: 5.80, siyah_6_20: 6.94, siyah_6_25: 10.78,
+  siyah_10_14: 5.02, siyah_10_16: 5.82, siyah_10_18: 6.58, siyah_10_20: 8.22, siyah_10_25: 11.30,
+  turuncu_6_14: 4.52, turuncu_6_16: 5.34, turuncu_6_18: 6.16, turuncu_6_20: 7.16, turuncu_6_25: 11.46,
+  turuncu_10_14: 5.34, turuncu_10_16: 6.18, turuncu_10_18: 6.84, turuncu_10_20: 8.54, turuncu_10_25: 11.72,
+  mavi_6_14: 4.42, mavi_6_16: 5.22, mavi_6_18: 6.02, mavi_6_20: 7.20, mavi_6_25: 11.20,
+  mavi_10_14: 5.22, mavi_10_16: 6.04, mavi_10_18: 6.84, mavi_10_20: 8.54, mavi_10_25: 11.72,
+  kapakli_buat_80: 10.00, kapakli_buat_100: 13.00, kapakli_buat_120: 14.00, kapakli_buat_150: 17.00, kapakli_buat_200: 28.00,
+  kapaksiz_buat_80: 8.00, kapaksiz_buat_100: 9.00, kapaksiz_buat_120: 10.60, kapaksiz_buat_150: 13.60, kapaksiz_buat_200: 20.40,
+  buat_kapagi_80: 4.20, buat_kapagi_100: 4.70, buat_kapagi_120: 5.80, buat_kapagi_150: 6.40, buat_kapagi_200: 16.00,
+  bombeli_luks_buat: 2.60, gecmeli_derin_kasa: 2.70, norm_buat: 4.60, tunel_beton_buat: 6.00,
+  norm_kasa: 2.50, plastik_takoz: 4.00, sekizlik_dubel: 0.18,
+  sigorta_kutusu: 15.20, plastik_tij_duy: 15.00, plastik_duy: 18.00,
+};
+
+function normalizeTR(s) {
+  return s.toLowerCase()
+    .replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ş/g, "s")
+    .replace(/ı/g, "i").replace(/ö/g, "o").replace(/ç/g, "c");
+}
+
+function programmaticQuote(message) {
+  const msg = normalizeTR(message);
+  const segments = msg.split(/[,.;\n]|\s+ve\s+/);
+  const items = [];
+
+  for (const rawSeg of segments) {
+    const s = rawSeg.trim();
+    if (!s) continue;
+
+    const qtyM = s.match(/(\d+(?:[.,]\d+)?)\s*(mt|metre|m(?!\w)|adet|ad(?!\w)|top(?!\w))/);
+    if (!qtyM) continue;
+
+    let qty = parseFloat(qtyM[1].replace(",", "."));
+    const rawUnit = qtyM[2];
+    let unit;
+    if (/^(mt|metre|m)/.test(rawUnit)) { unit = "MT"; }
+    else if (/^top/.test(rawUnit)) { qty *= 100; unit = "MT"; }
+    else { unit = "AD"; }
+
+    let productName = null;
+    let listPrice = null;
+    let forceUnit = null;
+
+    if (/boru/.test(s)) {
+      const sizeM = s.match(/(\d+)\s*mm/);
+      const atuM = s.match(/(\d+)\s*atu/);
+      const size = sizeM ? parseInt(sizeM[1]) : null;
+      const atu = atuM ? parseInt(atuM[1]) : 6;
+      if (!size || ![14, 16, 18, 20, 25].includes(size)) continue;
+      if (![6, 10].includes(atu)) continue;
+      const renk = /turuncu/.test(s) ? "turuncu" : /mavi/.test(s) ? "mavi" : "siyah";
+      const renkLabel = renk === "turuncu" ? "Turuncu" : renk === "mavi" ? "Mavi" : "Siyah";
+      listPrice = URUN_LISTE_FIYATLARI[`${renk}_${atu}_${size}`];
+      productName = `${renkLabel} Kangal Boru ${size}mm ${atu}Atu`;
+      forceUnit = "MT";
+    } else if (/gecmeli/.test(s) && /kasa|derin/.test(s)) {
+      listPrice = URUN_LISTE_FIYATLARI.gecmeli_derin_kasa;
+      productName = "Gecmeli Derin Kasa";
+      forceUnit = "AD";
+    } else if (/norm\s*kasa/.test(s)) {
+      listPrice = URUN_LISTE_FIYATLARI.norm_kasa;
+      productName = "Norm Kasa";
+      forceUnit = "AD";
+    } else if (/norm\s*buat/.test(s)) {
+      listPrice = URUN_LISTE_FIYATLARI.norm_buat;
+      productName = "Norm Buat";
+      forceUnit = "AD";
+    } else if (/kapaksiz.*buat|buat.*kapaksiz/.test(s)) {
+      const szM = s.match(/(\d{2,3})\s*x\s*(\d{2,3})/);
+      const sz = szM ? parseInt(szM[1]) : null;
+      if (!sz) continue;
+      listPrice = URUN_LISTE_FIYATLARI[`kapaksiz_buat_${sz}`];
+      if (!listPrice) continue;
+      productName = `Kapaksiz Kare Buat ${sz}x${sz}`;
+      forceUnit = "AD";
+    } else if (/kapakli.*buat|buat.*kapak/.test(s)) {
+      const szM = s.match(/(\d{2,3})\s*x\s*(\d{2,3})/);
+      const sz = szM ? parseInt(szM[1]) : null;
+      if (!sz) continue;
+      listPrice = URUN_LISTE_FIYATLARI[`kapakli_buat_${sz}`];
+      if (!listPrice) continue;
+      productName = `Kapakli Kare Buat ${sz}x${sz}`;
+      forceUnit = "AD";
+    } else if (/buat.*kapag|kapag.*buat/.test(s)) {
+      const szM = s.match(/(\d{2,3})\s*x\s*(\d{2,3})/);
+      const sz = szM ? parseInt(szM[1]) : null;
+      if (!sz) continue;
+      listPrice = URUN_LISTE_FIYATLARI[`buat_kapagi_${sz}`];
+      if (!listPrice) continue;
+      productName = `Kare Buat Kapagi ${sz}x${sz}`;
+      forceUnit = "AD";
+    } else if (/bombeli.*buat|luks.*buat/.test(s)) {
+      listPrice = URUN_LISTE_FIYATLARI.bombeli_luks_buat;
+      productName = "Bombeli Luks Buat";
+      forceUnit = "AD";
+    } else if (/tunel.*buat|beton.*buat/.test(s)) {
+      listPrice = URUN_LISTE_FIYATLARI.tunel_beton_buat;
+      productName = "Tunel Beton Buat";
+      forceUnit = "AD";
+    } else if (/takoz/.test(s)) {
+      listPrice = URUN_LISTE_FIYATLARI.plastik_takoz;
+      productName = "Plastik Takoz";
+      forceUnit = "AD";
+    } else if (/dubel/.test(s)) {
+      listPrice = URUN_LISTE_FIYATLARI.sekizlik_dubel;
+      productName = "Sekizlik Dubel";
+      forceUnit = "AD";
+    } else if (/sigorta/.test(s)) {
+      listPrice = URUN_LISTE_FIYATLARI.sigorta_kutusu;
+      productName = "1-2li Sigorta Kutusu";
+      forceUnit = "AD";
+    } else if (/tij.*duy|duy.*tij/.test(s)) {
+      listPrice = URUN_LISTE_FIYATLARI.plastik_tij_duy;
+      productName = "Plastik Tij Duy";
+      forceUnit = "AD";
+    } else if (/duy/.test(s)) {
+      listPrice = URUN_LISTE_FIYATLARI.plastik_duy;
+      productName = "Plastik Duy";
+      forceUnit = "AD";
+    }
+
+    if (productName && listPrice && qty > 0) {
+      if (forceUnit) unit = forceUnit;
+      const netPrice = Math.round(listPrice * 0.55 * 100) / 100;
+      const total = Math.round(qty * netPrice * 100) / 100;
+      items.push({ name: productName, qty, unit, listPrice, netPrice, total });
+    }
+  }
+
+  if (items.length === 0) return null;
+  console.log("Programatik teklif olusturuldu:", items.length, "kalem");
+  return { firma: "Musteri", items };
+}
+
 const URUN_FIYAT_LISTESI = `KANGAL BORU (MT fiyati):
 Siyah 6Atu: 14mm=4.26, 16mm=5.02, 18mm=5.80, 20mm=6.94, 25mm=10.78
 Siyah 10Atu: 14mm=5.02, 16mm=5.82, 18mm=6.58, 20mm=8.22, 25mm=11.30
@@ -663,21 +798,31 @@ async function handleWebhook(body, query, headers) {
     sendKatalog = false;
   }
 
-  let quoteData = parseQuote(botResponse);
+  let quoteData = null;
 
-  // AI [TEKLIF] blogu olusturamadiysa ve fiyat talebi varsa, odakli ikinci cagri yap
-  if (!quoteData && fiyatTalebi && !sendKatalog) {
-    console.log("AI [TEKLIF] olusturamadi, odakli teklif cagrisı yapiliyor");
-    try {
-      const teklifResponse = await generateQuoteOnly(message);
-      if (teklifResponse) {
-        console.log("Odakli teklif yaniti:", teklifResponse.slice(0, 200));
-        quoteData = parseQuote(teklifResponse);
-        if (quoteData) console.log("Teklif basariyla alindi:", quoteData.items.length, "kalem");
+  if (fiyatTalebi && !sendKatalog) {
+    // Once programatik teklif: urun adi + miktar varsa AI'ya gerek yok
+    quoteData = programmaticQuote(message);
+    if (!quoteData) {
+      // Programatik basarisiz, AI cevabindan dene
+      quoteData = parseQuote(botResponse);
+      if (!quoteData) {
+        // Son care: odakli AI cagrisi
+        console.log("Programatik basarisiz, odakli AI cagrisi yapiliyor");
+        try {
+          const teklifResponse = await generateQuoteOnly(message);
+          if (teklifResponse) {
+            console.log("Odakli teklif yaniti:", teklifResponse.slice(0, 200));
+            quoteData = parseQuote(teklifResponse);
+            if (quoteData) console.log("Odakli AI teklif alindi:", quoteData.items.length, "kalem");
+          }
+        } catch (e) {
+          console.error("Odakli teklif hatasi:", e.message);
+        }
       }
-    } catch (e) {
-      console.error("Odakli teklif hatasi:", e.message);
     }
+  } else {
+    quoteData = parseQuote(botResponse);
   }
 
   const cleanText = botResponse
