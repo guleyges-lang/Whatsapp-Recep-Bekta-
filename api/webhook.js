@@ -243,11 +243,15 @@ async function getHistory(phone) {
 
 async function katalogGonderildiMi(phone) {
   try {
-    const { count } = await supabase
+    const { data } = await supabase
       .from("conversations")
-      .select("*", { count: "exact", head: true })
-      .eq("phone", phone);
-    return (count || 0) > 0;
+      .select("bot_response")
+      .eq("phone", phone)
+      .order("created_at", { ascending: true })
+      .limit(20);
+    if (!data || data.length === 0) return false;
+    // Katalogun gercekten gonderilip gonderilmedigini icerege bak
+    return data.some(d => d.bot_response && d.bot_response.includes("kataloglarimizi gonderdim"));
   } catch {
     return false;
   }
@@ -792,42 +796,61 @@ async function handleWebhook(body, query, headers) {
 
   console.log("Mesaj: " + phone + " -> " + message);
 
+  const fiyatTalebi = /fiyat|teklif|ne kadar|kaç (lira|tl|para)|\d+\s*(mt|metre|adet|ad\b|top)|(\d+mm)|\d+\s*top\b|boru|buat|kasa|kangal|sigorta kutusu|duy|dubel|takoz/i.test(message);
+
+  // --- ILKK TEMAS: katalog hic gonderilmemisse ne yazarsa yazsin katalog + karsilama gonder ---
+  const katalogGonderildi = await katalogGonderildiMi(phone);
+  if (!katalogGonderildi) {
+    console.log("Ilk temas, katalog + karsilama gonderiliyor:", phone);
+    await sendKatalogAndGreeting(phone);
+    // Eger ayni mesajda urun + miktar da varsa PDF de gonder
+    if (fiyatTalebi) {
+      const ilkQuote = programmaticQuote(message);
+      if (ilkQuote) {
+        await sleep(1500);
+        try {
+          const tarih = new Date().toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" });
+          const quoteNumber = await getNextQuoteNumber();
+          const pdfBuffer = await generatePDF(ilkQuote, quoteNumber, tarih);
+          const filename = "Fiyat_Teklifimiz_" + tarih.replace(/\./g, "") + "_" + quoteNumber + ".pdf";
+          const pdfUrl = await uploadPDF(pdfBuffer, filename);
+          await saveQuote(phone, ilkQuote.firma, ilkQuote.items.reduce((s, i) => s + i.total, 0), pdfUrl);
+          await sendDocumentWithRetry(phone, pdfUrl, filename);
+        } catch (e) {
+          console.error("Ilk temas PDF hatasi:", e.message);
+        }
+      }
+    }
+    await saveConversation(phone, message, KARSILAMA_METNI);
+    return;
+  }
+
+  // --- GERI DONEN MUSTERI: AI ile normal akis ---
   let botResponse;
   try {
     botResponse = await generateResponse(phone, message);
   } catch (aiErr) {
     console.error("AI hatasi:", aiErr.message);
     await notifyOwner("AI yanit veremedi! Musteri: " + phone + " | " + aiErr.message.slice(0, 80));
-    if (await katalogGonderildiMi(phone)) {
-      try { await sendWhatsApp(phone, "Mesajinizi aldim, en kisa surede donuyorum."); } catch {}
-    } else {
-      await sendKatalogAndGreeting(phone);
-      await saveConversation(phone, message, KARSILAMA_METNI);
-    }
+    try { await sendWhatsApp(phone, "Mesajinizi aldim, en kisa surede donuyorum."); } catch {}
     return;
   }
 
   console.log("AI yanit (tam):", botResponse.slice(0, 400));
 
+  // AI [KATALOG] dondurduyse geri donen musteriye sadece normal metin gonder
   let sendKatalog = /\[KATALOG\]|\bKATALOG\b/.test(botResponse);
-
-  // Musteri fiyat/urun/miktar soruyorsa katalog gonderme - AI yanlis karar verdi demektir
-  const fiyatTalebi = /fiyat|teklif|ne kadar|kaç (lira|tl|para)|\d+\s*(mt|metre|adet|ad\b|top)|(\d+mm)|\d+\s*top\b|boru|buat|kasa|kangal|sigorta kutusu|duy|dubel|takoz/i.test(message);
   if (sendKatalog && fiyatTalebi) {
-    console.log("Fiyat/urun talebi tespit edildi, katalog atlanıyor:", message.slice(0, 80));
     sendKatalog = false;
   }
 
   let quoteData = null;
 
   if (fiyatTalebi && !sendKatalog) {
-    // Once programatik teklif: urun adi + miktar varsa AI'ya gerek yok
     quoteData = programmaticQuote(message);
     if (!quoteData) {
-      // Programatik basarisiz, AI cevabindan dene
       quoteData = parseQuote(botResponse);
       if (!quoteData) {
-        // Son care: odakli AI cagrisi
         console.log("Programatik basarisiz, odakli AI cagrisi yapiliyor");
         try {
           const teklifResponse = await generateQuoteOnly(message);
@@ -851,15 +874,10 @@ async function handleWebhook(body, query, headers) {
     .trim();
 
   if (sendKatalog) {
-    if (await katalogGonderildiMi(phone)) {
-      console.log("Katalog zaten gonderilmis, tekrar gonderilmiyor:", phone);
-      const tekrarMetin = cleanText || "Nasil yardimci olabilirim?";
-      try { await sendWhatsApp(phone, tekrarMetin); } catch (e) { console.error("Tekrar metin hatasi:", e.message); }
-      await saveConversation(phone, message, tekrarMetin);
-    } else {
-      await sendKatalogAndGreeting(phone);
-      await saveConversation(phone, message, KARSILAMA_METNI);
-    }
+    // Katalog zaten gonderildi (bu musteriye), sadece normal metin gonder
+    const tekrarMetin = cleanText || "Nasil yardimci olabilirim?";
+    try { await sendWhatsApp(phone, tekrarMetin); } catch (e) { console.error("Tekrar metin hatasi:", e.message); }
+    await saveConversation(phone, message, tekrarMetin);
     return;
   }
 
