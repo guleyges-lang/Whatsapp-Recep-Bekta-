@@ -250,8 +250,10 @@ async function katalogGonderildiMi(phone) {
       .order("created_at", { ascending: true })
       .limit(20);
     if (!data || data.length === 0) return false;
-    // Katalogun gercekten gonderilip gonderilmedigini icerege bak
-    return data.some(d => d.bot_response && d.bot_response.includes("kataloglarimizi gonderdim"));
+    return data.some(d => d.bot_response && (
+      d.bot_response.includes("kataloglarimizi gonderdim") ||
+      d.bot_response === "__KATALOG_GONDERILIYOR__"
+    ));
   } catch {
     return false;
   }
@@ -819,8 +821,23 @@ async function handleWebhook(body, query, headers) {
   // --- ILKK TEMAS: katalog hic gonderilmemisse ne yazarsa yazsin katalog + karsilama gonder ---
   const katalogGonderildi = await katalogGonderildiMi(phone);
   if (!katalogGonderildi) {
+    // Hemen kilit kaydi yaz — WasenderAPI'nin 5s sonra tekrar gonderdigi
+    // webhook cagrisini engeller (ikinci cagri "__KATALOG_GONDERILIYOR__" gorur ve atlar)
+    let lockId = null;
+    try {
+      const { data: lockData } = await supabase
+        .from("conversations")
+        .insert({ phone, customer_message: message, bot_response: "__KATALOG_GONDERILIYOR__" })
+        .select("id")
+        .single();
+      lockId = lockData?.id;
+    } catch (e) {
+      console.error("Kilit kaydi hatasi:", e.message);
+    }
+
     console.log("Ilk temas, katalog + karsilama gonderiliyor:", phone);
     await sendKatalogAndGreeting(phone);
+
     // Eger ayni mesajda urun + miktar da varsa PDF de gonder
     if (fiyatTalebi) {
       const ilkQuote = programmaticQuote(message);
@@ -839,7 +856,17 @@ async function handleWebhook(body, query, headers) {
         }
       }
     }
-    await saveConversation(phone, message, KARSILAMA_METNI);
+
+    // Kilit kaydini gercek karsilama metniyle guncelle
+    if (lockId) {
+      try {
+        await supabase.from("conversations").update({ bot_response: KARSILAMA_METNI }).eq("id", lockId);
+      } catch {
+        await saveConversation(phone, message, KARSILAMA_METNI);
+      }
+    } else {
+      await saveConversation(phone, message, KARSILAMA_METNI);
+    }
     return;
   }
 
