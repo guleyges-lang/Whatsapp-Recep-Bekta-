@@ -252,7 +252,8 @@ async function katalogGonderildiMi(phone) {
     if (!data || data.length === 0) return false;
     return data.some(d => d.bot_response && (
       d.bot_response.includes("kataloglarimizi gonderdim") ||
-      d.bot_response === "__KATALOG_GONDERILIYOR__"
+      d.bot_response === "__KATALOG_GONDERILIYOR__" ||
+      d.bot_response.includes("teklifinizi gonderdim")
     ));
   } catch {
     return false;
@@ -590,11 +591,16 @@ function programmaticQuote(message) {
     let listPrice = null;
     let forceUnit = null;
 
-    if (/boru/.test(s)) {
+    // Boru tespiti: "boru" kelimesi VEYA mm+atu kombinasyonu (ornek: "16mm 10atu mavi")
+    const hasSizeMM = /\d+\s*mm/.test(s);
+    const hasAtuStr = /\d+\s*atu|atu\s*\d+/.test(s);
+    if (/boru/.test(s) || (hasSizeMM && hasAtuStr)) {
       const sizeM = s.match(/(\d+)\s*mm/);
-      const atuM = s.match(/(\d+)\s*atu/);
+      // "10 atu" ve "atu 10" formatlarinin ikisini de destekle
+      const atuM1 = s.match(/(\d+)\s*atu/);
+      const atuM2 = s.match(/atu\s*(\d+)/);
       const size = sizeM ? parseInt(sizeM[1]) : null;
-      const atu = atuM ? parseInt(atuM[1]) : 6;
+      const atu = atuM1 ? parseInt(atuM1[1]) : (atuM2 ? parseInt(atuM2[1]) : 6);
       if (!size || ![14, 16, 18, 20, 25].includes(size)) continue;
       if (![6, 10].includes(atu)) continue;
       const renk = /turuncu/.test(s) ? "turuncu" : /mavi/.test(s) ? "mavi" : "siyah";
@@ -817,12 +823,12 @@ async function handleWebhook(body, query, headers) {
   console.log("Mesaj: " + phone + " -> " + message);
 
   const fiyatTalebi = /fiyat|teklif|ne kadar|kaç (lira|tl|para)|\d+\s*(mt|metre|adet|ad\b|top)|(\d+mm)|\d+\s*top\b|boru|buat|kasa|kangal|sigorta kutusu|duy|dubel|takoz/i.test(message);
+  const hasMiktar = /\d+\s*(mt|metre|m(?!\w)|adet|ad(?!\w)|top(?!\w))/i.test(message);
 
-  // --- ILKK TEMAS: katalog hic gonderilmemisse ne yazarsa yazsin katalog + karsilama gonder ---
+  // --- ILKK TEMAS: katalog hic gonderilmemisse ---
   const katalogGonderildi = await katalogGonderildiMi(phone);
   if (!katalogGonderildi) {
-    // Hemen kilit kaydi yaz — WasenderAPI'nin 5s sonra tekrar gonderdigi
-    // webhook cagrisini engeller (ikinci cagri "__KATALOG_GONDERILIYOR__" gorur ve atlar)
+    // Kilit kaydi - WasenderAPI tekrar gondermesini engeller
     let lockId = null;
     try {
       const { data: lockData } = await supabase
@@ -835,38 +841,47 @@ async function handleWebhook(body, query, headers) {
       console.error("Kilit kaydi hatasi:", e.message);
     }
 
-    console.log("Ilk temas, katalog + karsilama gonderiliyor:", phone);
-    await sendKatalogAndGreeting(phone);
-
-    // Eger ayni mesajda urun + miktar da varsa PDF de gonder
-    if (fiyatTalebi) {
-      const ilkQuote = programmaticQuote(message);
+    // Musteri direk urun+miktar yazdiysa: sadece PDF gonder, katalog gonderme
+    if (fiyatTalebi && hasMiktar) {
+      let ilkQuote = programmaticQuote(message);
+      if (!ilkQuote) {
+        try {
+          const teklifResponse = await generateQuoteOnly(message);
+          if (teklifResponse) ilkQuote = parseQuote(teklifResponse);
+        } catch (e) { console.error("Ilk temas AI teklif hatasi:", e.message); }
+      }
       if (ilkQuote) {
-        await sleep(1500);
+        let pdfSent = false;
         try {
           const tarih = new Date().toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" });
           const quoteNumber = await getNextQuoteNumber();
           const pdfBuffer = await generatePDF(ilkQuote, quoteNumber, tarih);
           const filename = "Fiyat_Teklifimiz_" + tarih.replace(/\./g, "") + "_" + quoteNumber + ".pdf";
           const pdfUrl = await uploadPDF(pdfBuffer, filename);
-          await saveQuote(phone, ilkQuote.firma, ilkQuote.items.reduce((s, i) => s + i.total, 0), pdfUrl);
+          await saveQuote(phone, ilkQuote.firma, ilkQuote.items.reduce((sum, i) => sum + i.total, 0), pdfUrl);
           await sendDocumentWithRetry(phone, pdfUrl, filename);
-        } catch (e) {
-          console.error("Ilk temas PDF hatasi:", e.message);
+          pdfSent = true;
+        } catch (pdfErr) {
+          console.error("Ilk temas PDF hatasi:", pdfErr.message);
+          await notifyOwner("Ilk temas PDF gonderilemedi! Musteri: " + phone + " | " + pdfErr.message.slice(0, 80));
+          try { await sendWhatsApp(phone, "Fiyat teklifinizi hazirladim ancak PDF gonderiminde sorun olustu. Lutfen su numarayi arayin: +90 537 363 06 08"); } catch {}
         }
+        const pdfResponseText = pdfSent
+          ? "Fiyat teklifinizi gonderdim. Baska bir urun veya baska miktarlar icin yardimci olabilirim."
+          : KARSILAMA_METNI;
+        if (lockId) {
+          try { await supabase.from("conversations").update({ bot_response: pdfResponseText }).eq("id", lockId); } catch { await saveConversation(phone, message, pdfResponseText); }
+        } else { await saveConversation(phone, message, pdfResponseText); }
+        return;
       }
     }
 
-    // Kilit kaydini gercek karsilama metniyle guncelle
+    // Urun/miktar belirtilmemis: katalog + karsilama gonder
+    console.log("Ilk temas, katalog + karsilama gonderiliyor:", phone);
+    await sendKatalogAndGreeting(phone);
     if (lockId) {
-      try {
-        await supabase.from("conversations").update({ bot_response: KARSILAMA_METNI }).eq("id", lockId);
-      } catch {
-        await saveConversation(phone, message, KARSILAMA_METNI);
-      }
-    } else {
-      await saveConversation(phone, message, KARSILAMA_METNI);
-    }
+      try { await supabase.from("conversations").update({ bot_response: KARSILAMA_METNI }).eq("id", lockId); } catch { await saveConversation(phone, message, KARSILAMA_METNI); }
+    } else { await saveConversation(phone, message, KARSILAMA_METNI); }
     return;
   }
 
@@ -888,9 +903,6 @@ async function handleWebhook(body, query, headers) {
   if (sendKatalog && fiyatTalebi) {
     sendKatalog = false;
   }
-
-  // Teklif icin hem fiyat talebi hem de sayisal miktar sarttir (miktar yoksa PDF gonderme)
-  const hasMiktar = /\d+\s*(mt|metre|m(?!\w)|adet|ad(?!\w)|top(?!\w))/i.test(message);
 
   let quoteData = null;
 
