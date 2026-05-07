@@ -583,8 +583,11 @@ function programmaticQuote(message) {
     const hasBoruRenk = /siyah|mavi|turuncu/.test(s);
     const looksLikeBoru = /boru/.test(s) || (hasSizeMM && (hasAtuStr || hasBoruRenk));
 
+    // AD urun anahtar kelimeleri - miktar birimi olmasa da devam et
+    const hasAdUrunKeyword = /derin\s*kasa|gecmeli|norm\s*kasa|norm\s*buat|kapakli|kapaksiz|bombeli|luks\s*buat|tunel\s*buat|beton\s*buat|\btakoz\b|\bdubel\b|\bsigorta\b|\bduy\b/.test(s);
+
     const qtyM = s.match(/(\d+(?:[.,]\d+)?)\s*(mt|metre|m(?!\w)|adet|ad(?!\w)|top(?!\w))/);
-    if (!qtyM && !looksLikeBoru) continue;
+    if (!qtyM && !looksLikeBoru && !hasAdUrunKeyword) continue;
 
     let qty = 0;
     let unit = "MT";
@@ -625,7 +628,7 @@ function programmaticQuote(message) {
       listPrice = URUN_LISTE_FIYATLARI[`${renk}_${atu}_${size}`];
       productName = `${renkLabel} Kangal Boru ${size}mm ${atu}Atu`;
       forceUnit = "MT";
-    } else if (/gecmeli/.test(s) && /kasa|derin/.test(s)) {
+    } else if ((/derin/.test(s) && /kasa/.test(s)) || (/gecmeli/.test(s) && /kasa/.test(s))) {
       listPrice = URUN_LISTE_FIYATLARI.gecmeli_derin_kasa;
       productName = "Gecmeli Derin Kasa";
       forceUnit = "AD";
@@ -689,6 +692,15 @@ function programmaticQuote(message) {
       listPrice = URUN_LISTE_FIYATLARI.plastik_duy;
       productName = "Plastik Duy";
       forceUnit = "AD";
+    }
+
+    // Birimli miktar yoksa (AD urunler icin) segment'ten bare sayi al
+    if (productName && listPrice && !qty) {
+      const sNoSize = s.replace(/\d{2,3}\s*x\s*\d{2,3}/g, " ");
+      const bareQty = [...sNoSize.matchAll(/\b(\d+)\b/g)]
+        .map(m => parseInt(m[1]))
+        .find(n => n > 0);
+      if (bareQty) qty = bareQty;
     }
 
     if (productName && listPrice && qty > 0) {
@@ -840,7 +852,8 @@ async function handleWebhook(body, query, headers) {
   console.log("Mesaj: " + phone + " -> " + message);
 
   const fiyatTalebi = /fiyat|teklif|ne kadar|kaç (lira|tl|para)|\d+\s*(mt|metre|adet|ad\b|top)|(\d+mm)|\d+\s*top\b|boru|buat|kasa|kangal|sigorta kutusu|duy|dubel|takoz/i.test(message);
-  const hasMiktar = /\d+\s*(mt|metre|m(?!\w)|adet|ad(?!\w)|top(?!\w))/i.test(message);
+  const hasMiktar = /\d+\s*(mt|metre|m(?!\w)|adet|ad(?!\w)|top(?!\w))/i.test(message) ||
+    (/\b\d{2,}\b/.test(message) && /derin\s*kasa|norm\s*kasa|norm\s*buat|gecmeli.*kasa|kapakli.*buat|kapaksiz.*buat|buat.*kapag|bombeli.*buat|tunel.*buat|beton.*buat|\btakoz\b|\bdubel\b|\bsigorta\b|tij.*duy|\bduy\b/i.test(message));
 
   // --- ILKK TEMAS: katalog hic gonderilmemisse ---
   const katalogGonderildi = await katalogGonderildiMi(phone);
