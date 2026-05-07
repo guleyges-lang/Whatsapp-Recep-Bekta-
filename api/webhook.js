@@ -611,11 +611,15 @@ function programmaticQuote(message) {
       const atuM2 = s.match(/atu\s*(\d+)/);
       const size = sizeM ? parseInt(sizeM[1]) : null;
       const atu = atuM1 ? parseInt(atuM1[1]) : (atuM2 ? parseInt(atuM2[1]) : 6);
-      if (!size || ![14, 16, 18, 20, 25].includes(size)) continue;
-      if (![6, 10].includes(atu)) continue;
+      if (!size) continue;
+      // Gecersiz cap veya atu → en yakin gecerli degere yuvarla
+      const GECERLI_CAPLAR = [14, 16, 18, 20, 25];
+      const cap = GECERLI_CAPLAR.includes(size) ? size :
+        GECERLI_CAPLAR.reduce((en, c) => Math.abs(c - size) < Math.abs(en - size) ? c : en);
+      const effectiveAtu = [6, 10].includes(atu) ? atu : (atu <= 8 ? 6 : 10);
       // Birimli miktar yoksa segment'teki boyut/atu disindaki sayiyi MT olarak al
       if (!qty) {
-        const usedNums = new Set([size, atu]);
+        const usedNums = new Set([size, atu, cap, effectiveAtu]);
         const bareQty = [...s.matchAll(/\b(\d+)\b/g)]
           .map(m => parseInt(m[1]))
           .find(n => !usedNums.has(n) && n > 0);
@@ -625,8 +629,8 @@ function programmaticQuote(message) {
       }
       const renk = /turuncu/.test(s) ? "turuncu" : /mavi/.test(s) ? "mavi" : "siyah";
       const renkLabel = renk === "turuncu" ? "Turuncu" : renk === "mavi" ? "Mavi" : "Siyah";
-      listPrice = URUN_LISTE_FIYATLARI[`${renk}_${atu}_${size}`];
-      productName = `${renkLabel} Kangal Boru ${size}mm ${atu}Atu`;
+      listPrice = URUN_LISTE_FIYATLARI[`${renk}_${effectiveAtu}_${cap}`];
+      productName = `${renkLabel} Kangal Boru ${cap}mm ${effectiveAtu}Atu`;
       forceUnit = "MT";
     } else if ((/derin/.test(s) && /kasa/.test(s)) || (/gecmeli/.test(s) && /kasa/.test(s))) {
       listPrice = URUN_LISTE_FIYATLARI.gecmeli_derin_kasa;
