@@ -843,13 +843,7 @@ async function handleWebhook(body, query, headers) {
 
     // Musteri direk urun+miktar yazdiysa: sadece PDF gonder, katalog gonderme
     if (fiyatTalebi && hasMiktar) {
-      let ilkQuote = programmaticQuote(message);
-      if (!ilkQuote) {
-        try {
-          const teklifResponse = await generateQuoteOnly(message);
-          if (teklifResponse) ilkQuote = parseQuote(teklifResponse);
-        } catch (e) { console.error("Ilk temas AI teklif hatasi:", e.message); }
-      }
+      const ilkQuote = programmaticQuote(message);
       if (ilkQuote) {
         let pdfSent = false;
         try {
@@ -908,23 +902,6 @@ async function handleWebhook(body, query, headers) {
 
   if (fiyatTalebi && hasMiktar && !sendKatalog) {
     quoteData = programmaticQuote(message);
-    if (!quoteData) {
-      quoteData = parseQuote(botResponse);
-      if (!quoteData) {
-        console.log("Programatik basarisiz, odakli AI cagrisi yapiliyor");
-        try {
-          const teklifResponse = await generateQuoteOnly(message);
-          if (teklifResponse) {
-            console.log("Odakli teklif yaniti:", teklifResponse.slice(0, 200));
-            quoteData = parseQuote(teklifResponse);
-            if (quoteData) console.log("Odakli AI teklif alindi:", quoteData.items.length, "kalem");
-          }
-        } catch (e) {
-          console.error("Odakli teklif hatasi:", e.message);
-        }
-      }
-    }
-    // Ayni teklif son 2 saat icerisinde gonderildiyse tekrar gonderme
     if (quoteData) {
       const currentTotal = quoteData.items.reduce((s, i) => s + i.total, 0);
       if (await teklifAyniMiKontrol(phone, currentTotal)) {
