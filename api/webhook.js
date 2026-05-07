@@ -913,7 +913,41 @@ async function handleWebhook(body, query, headers) {
     return;
   }
 
-  // --- GERI DONEN MUSTERI: AI ile normal akis ---
+  // --- GERI DONEN MUSTERI ---
+
+  // Once programatik teklif dene — urun+miktar mesajlarinda AI cagrisi olmaz
+  if (fiyatTalebi && hasMiktar) {
+    const quoteData = programmaticQuote(message);
+    if (quoteData) {
+      const currentTotal = quoteData.items.reduce((s, i) => s + i.total, 0);
+      if (await teklifAyniMiKontrol(phone, currentTotal)) {
+        console.log("Ayni teklif son 2 saatte gonderilmis:", phone);
+        const dupMesaj = "Bu fiyat teklifini az once WhatsApp'tan gonderdim. Lutfen kontrol edin. Farkli urun veya miktar icin yardimci olabilirim.";
+        try { await sendWhatsApp(phone, dupMesaj); } catch (e) { console.error("Dup mesaj hatasi:", e.message); }
+        await saveConversation(phone, message, dupMesaj);
+        return;
+      }
+      try {
+        const tarih = new Date().toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" });
+        const quoteNumber = await getNextQuoteNumber();
+        const pdfBuffer = await generatePDF(quoteData, quoteNumber, tarih);
+        const filename = "Fiyat_Teklifimiz_" + tarih.replace(/\./g, "") + "_" + quoteNumber + ".pdf";
+        const pdfUrl = await uploadPDF(pdfBuffer, filename);
+        await saveQuote(phone, quoteData.firma, quoteData.items.reduce((s, i) => s + i.total, 0), pdfUrl);
+        await sendDocumentWithRetry(phone, pdfUrl, filename);
+        await saveConversation(phone, message, "Fiyat teklifinizi gonderdim. Baska urun veya miktar icin yardimci olabilirim.");
+      } catch (pdfErr) {
+        console.error("PDF hatasi:", pdfErr.message);
+        await notifyOwner("PDF gonderilemedi! Musteri: " + phone + " | Firma: " + quoteData.firma + " | Hata: " + pdfErr.message.slice(0, 80));
+        try { await sendWhatsApp(phone, "Fiyat teklifinizi hazirladim ancak PDF gonderiminde sorun olustu. Lutfen su numarayi arayin: +90 537 363 06 08"); } catch {}
+        await saveConversation(phone, message, "PDF gonderim hatasi");
+      }
+      return;
+    }
+    console.log("Programatik teklif basarisiz (urun taninamadi):", message.slice(0, 100));
+  }
+
+  // AI ile normal akis: genel mesajlar veya taninamayan urun sorgusu
   let botResponse;
   try {
     botResponse = await generateResponse(phone, message);
@@ -926,30 +960,9 @@ async function handleWebhook(body, query, headers) {
 
   console.log("AI yanit (tam):", botResponse.slice(0, 400));
 
-  // AI [KATALOG] dondurduyse geri donen musteriye sadece normal metin gonder
+  // Geri donen musteriye katalog gondermez, sadece metin gonder
   let sendKatalog = /\[KATALOG\]|\bKATALOG\b/.test(botResponse);
-  if (sendKatalog && fiyatTalebi) {
-    sendKatalog = false;
-  }
-
-  let quoteData = null;
-
-  if (fiyatTalebi && hasMiktar && !sendKatalog) {
-    quoteData = programmaticQuote(message);
-    if (quoteData) {
-      const currentTotal = quoteData.items.reduce((s, i) => s + i.total, 0);
-      if (await teklifAyniMiKontrol(phone, currentTotal)) {
-        console.log("Ayni teklif son 2 saatte gonderilmis:", phone);
-        const dupMesaj = "Bu fiyat teklifini az once WhatsApp'tan gonderdim. Lutfen kontrol edin. Farkli urun veya miktar icin yardimci olabilirim.";
-        try { await sendWhatsApp(phone, dupMesaj); } catch (e) { console.error("Dup mesaj hatasi:", e.message); }
-        await saveConversation(phone, message, dupMesaj);
-        return;
-      }
-    } else if (hasMiktar) {
-      console.log("Programatik teklif basarisiz (urun taninamadi):", message.slice(0, 100));
-    }
-  }
-  // Not: miktar belirtilmediyse veya fiyat talebi yoksa AI cevabindan teklif parse edilmez
+  if (sendKatalog && fiyatTalebi) sendKatalog = false;
 
   const cleanText = botResponse
     .replace(/\[?KATALOG\]?/g, "")
@@ -957,47 +970,25 @@ async function handleWebhook(body, query, headers) {
     .trim();
 
   if (sendKatalog) {
-    // Katalog zaten gonderildi (bu musteriye), sadece normal metin gonder
     const tekrarMetin = cleanText || "Nasil yardimci olabilirim?";
     try { await sendWhatsApp(phone, tekrarMetin); } catch (e) { console.error("Tekrar metin hatasi:", e.message); }
     await saveConversation(phone, message, tekrarMetin);
     return;
   }
 
-  if (quoteData) {
-    try {
-      const tarih = new Date().toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit", year: "numeric" });
-      const quoteNumber = await getNextQuoteNumber();
-      const pdfBuffer = await generatePDF(quoteData, quoteNumber, tarih);
-      const filename = "Fiyat_Teklifimiz_" + tarih.replace(/\./g, "") + "_" + quoteNumber + ".pdf";
-      const pdfUrl = await uploadPDF(pdfBuffer, filename);
-      await saveQuote(phone, quoteData.firma, quoteData.items.reduce((s, i) => s + i.total, 0), pdfUrl);
-      await sendDocumentWithRetry(phone, pdfUrl, filename);
-      await saveConversation(phone, message, cleanText);
-    } catch (pdfErr) {
-      console.error("PDF hatasi:", pdfErr.message);
-      await notifyOwner("PDF gonderilemedi! Musteri: " + phone + " | Firma: " + quoteData.firma + " | Hata: " + pdfErr.message.slice(0, 80));
-      try {
-        await sendWhatsApp(phone, "Fiyat teklifinizi hazirladim ancak PDF gonderiminde sorun olustu. Lutfen su numarayi arayin: +90 537 363 06 08");
-      } catch {}
-      await saveConversation(phone, message, cleanText);
-    }
-  } else {
-    // AI [TEKLIF] blogu olusturamadiysa ama "PDF gonderiyorum" yazdiysa duzelt
-    const duzeltilmisMetin = cleanText
-      .replace(/fiyat teklifini[^.]*hazirladim[^.]*\./gi, "")
-      .replace(/fiyat teklifini[^.]*haz.rladim[^.]*\./gi, "")
-      .replace(/pdf olarak g.nderiyorum\.?/gi, "")
-      .replace(/pdf g.nderiyorum\.?/gi, "")
-      .trim();
-    const gonderilenMetin = duzeltilmisMetin || (/pdf/i.test(cleanText) ? "" : cleanText);
-    if (gonderilenMetin) {
-      try { await sendWhatsApp(phone, gonderilenMetin); } catch (e) { console.error("Metin hatasi:", e.message); }
-    } else if (/pdf/i.test(cleanText)) {
-      console.log("AI PDF sozlesmesi yapti ama teklif uretilmedi, metin gizlendi:", cleanText.slice(0, 100));
-    }
-    await saveConversation(phone, message, gonderilenMetin || cleanText);
+  const duzeltilmisMetin = cleanText
+    .replace(/fiyat teklifini[^.]*hazirladim[^.]*\./gi, "")
+    .replace(/fiyat teklifini[^.]*haz.rladim[^.]*\./gi, "")
+    .replace(/pdf olarak g.nderiyorum\.?/gi, "")
+    .replace(/pdf g.nderiyorum\.?/gi, "")
+    .trim();
+  const gonderilenMetin = duzeltilmisMetin || (/pdf/i.test(cleanText) ? "" : cleanText);
+  if (gonderilenMetin) {
+    try { await sendWhatsApp(phone, gonderilenMetin); } catch (e) { console.error("Metin hatasi:", e.message); }
+  } else if (/pdf/i.test(cleanText)) {
+    console.log("AI PDF sozlesmesi yapti ama teklif uretilmedi, metin gizlendi:", cleanText.slice(0, 100));
   }
+  await saveConversation(phone, message, gonderilenMetin || cleanText);
 }
 
 module.exports = async (req, res) => {
