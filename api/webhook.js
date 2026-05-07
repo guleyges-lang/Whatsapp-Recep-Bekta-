@@ -577,24 +577,31 @@ function programmaticQuote(message) {
     const s = rawSeg.trim();
     if (!s) continue;
 
-    const qtyM = s.match(/(\d+(?:[.,]\d+)?)\s*(mt|metre|m(?!\w)|adet|ad(?!\w)|top(?!\w))/);
-    if (!qtyM) continue;
+    // Boru on tespiti - mm + (atu veya renk) varsa boru kabul edilir, miktar birimi olmasa da
+    const hasSizeMM = /\d+\s*mm/.test(s);
+    const hasAtuStr = /\d+\s*atu|atu\s*\d+/.test(s);
+    const hasBoruRenk = /siyah|mavi|turuncu/.test(s);
+    const looksLikeBoru = /boru/.test(s) || (hasSizeMM && (hasAtuStr || hasBoruRenk));
 
-    let qty = parseFloat(qtyM[1].replace(",", "."));
-    const rawUnit = qtyM[2];
-    let unit;
-    if (/^(mt|metre|m)/.test(rawUnit)) { unit = "MT"; }
-    else if (/^top/.test(rawUnit)) { qty *= 100; unit = "MT"; }
-    else { unit = "AD"; }
+    const qtyM = s.match(/(\d+(?:[.,]\d+)?)\s*(mt|metre|m(?!\w)|adet|ad(?!\w)|top(?!\w))/);
+    if (!qtyM && !looksLikeBoru) continue;
+
+    let qty = 0;
+    let unit = "MT";
+    if (qtyM) {
+      qty = parseFloat(qtyM[1].replace(",", "."));
+      const rawUnit = qtyM[2];
+      if (/^(mt|metre|m)/.test(rawUnit)) { unit = "MT"; }
+      else if (/^top/.test(rawUnit)) { qty *= 100; unit = "MT"; }
+      else { unit = "AD"; }
+    }
 
     let productName = null;
     let listPrice = null;
     let forceUnit = null;
 
-    // Boru tespiti: "boru" kelimesi VEYA mm+atu kombinasyonu (ornek: "16mm 10atu mavi")
-    const hasSizeMM = /\d+\s*mm/.test(s);
-    const hasAtuStr = /\d+\s*atu|atu\s*\d+/.test(s);
-    if (/boru/.test(s) || (hasSizeMM && hasAtuStr)) {
+    // Boru tespiti: "boru" kelimesi VEYA mm + (atu veya renk) kombinasyonu
+    if (looksLikeBoru) {
       const sizeM = s.match(/(\d+)\s*mm/);
       // "10 atu" ve "atu 10" formatlarinin ikisini de destekle
       const atuM1 = s.match(/(\d+)\s*atu/);
@@ -603,6 +610,16 @@ function programmaticQuote(message) {
       const atu = atuM1 ? parseInt(atuM1[1]) : (atuM2 ? parseInt(atuM2[1]) : 6);
       if (!size || ![14, 16, 18, 20, 25].includes(size)) continue;
       if (![6, 10].includes(atu)) continue;
+      // Birimli miktar yoksa segment'teki boyut/atu disindaki sayiyi MT olarak al
+      if (!qty) {
+        const usedNums = new Set([size, atu]);
+        const bareQty = [...s.matchAll(/\b(\d+)\b/g)]
+          .map(m => parseInt(m[1]))
+          .find(n => !usedNums.has(n) && n > 0);
+        if (!bareQty) continue;
+        qty = bareQty;
+        unit = "MT";
+      }
       const renk = /turuncu/.test(s) ? "turuncu" : /mavi/.test(s) ? "mavi" : "siyah";
       const renkLabel = renk === "turuncu" ? "Turuncu" : renk === "mavi" ? "Mavi" : "Siyah";
       listPrice = URUN_LISTE_FIYATLARI[`${renk}_${atu}_${size}`];
