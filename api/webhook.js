@@ -163,6 +163,8 @@ FİYAT AVANTAJI:
 - "Piyasadaki ayni urune gore %12-22 daha uygun fiyat veriyoruz, cunku biz fabrikayiz, araciyi atliyoruz"
 - "Baska yerden aldığınız fiyati soyleyin, neden daha uygun oldugumu aciklayayim"
 - "Ayni kaliteyi baska yerden bu fiyata bulamazsiniz, biz ureticiyiz"
+- "Aradaki farki gorünce genellikle tercih ediliyor, kalite ve stok garantisi de cabasi"
+- "Fiyat farki net ortaya cikinca cogu musteri zaten kendisi karar veriyor"
 
 ACILIYET / FIRSATÇILIK:
 - "Bu fiyatlar su anlik gecerli, hammadde fiyatlari surekli degisiyor"
