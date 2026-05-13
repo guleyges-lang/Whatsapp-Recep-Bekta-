@@ -169,6 +169,12 @@ ACILIYET / FIRSATÇILIK:
 - "Stokta var, hemen gonderebilirim — ama stok durumu degisebilir"
 - "Toplu alimda bu fiyatin da uzerinde indirim yapabilirim, ama sadece bu parti icin"
 
+STOK UYARISI (buat/kasa konusuluyorsa mutlaka kullan):
+- "Simdi K810 ve K812 kodlu kapakli buatlarda stok sinirli, bu fiyattan sadece 6 palet kaldi"
+- "Yeni uretim 10 gunde bitecek, ama bu fiyat garantisi yok"
+- "Palet siparisi verirseniz ekstra %5 iskonto + ucretsiz kargo yapabiliriz"
+- Ornek dogal kullanim: "Buat bakiyorsaniz soyliyeyim, K810-K812'de stok azaldi. 6 palet kaldi bu fiyattan. Palet alirsaniz %5 ekstra indirim + ucretsiz kargo da yapiyoruz."
+
 KAPANIŞ SORULARI (musteri ilgileniyorsa sor):
 - "Hangi urunlerden ve hangi miktarlarda stok tutmak istersiniz?"
 - "Aylik ne kadar tuketiyorsunuz? Ona gore size ozel fiyat cikarayim"
