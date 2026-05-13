@@ -525,10 +525,26 @@ async function sendImageWithRetry(phone, imageUrl, label) {
 }
 
 async function sendKatalogAndGreeting(phone) {
+  // Duplicate koruma: son 30 saniyede bu telefona herhangi bir kayit var mi?
+  try {
+    const otuzSaniyeOnce = new Date(Date.now() - 30 * 1000).toISOString();
+    const { count } = await supabase
+      .from("conversations")
+      .select("*", { count: "exact", head: true })
+      .eq("phone", phone)
+      .gte("created_at", otuzSaniyeOnce);
+    if ((count || 0) > 0) {
+      console.log("Son 30 saniyede kayit var, katalog tekrar gonderilmiyor:", phone);
+      return;
+    }
+  } catch (e) {
+    console.error("Duplicate kontrol hatasi:", e.message);
+  }
+
   console.log("Katalog gonderimi basliyor:", phone);
   await sendImageWithRetry(phone, KATALOG_URLS[0], "Gorsel1");
   await sleep(4000);
-  // 2. gorsel + karsilama metni ayni mesajda (caption olarak) - 3 mesaj yerine 2 mesaj
+  // 2. gorsel + karsilama metni ayni mesajda
   try {
     const res = await fetch("https://www.wasenderapi.com/api/send-message", {
       method: "POST",
@@ -541,7 +557,6 @@ async function sendKatalogAndGreeting(phone) {
     console.log("Gorsel2 ve karsilama metni gonderildi");
   } catch (e) {
     console.error("Gorsel2+metin hatasi:", e.message);
-    // Fallback: gorsel ve metni ayri ayri gonder
     await sendImageWithRetry(phone, KATALOG_URLS[1], "Gorsel2-fallback");
     await sleep(5000);
     try { await sendWhatsApp(phone, KARSILAMA_METNI); } catch (e2) { console.error("Karsilama fallback hatasi:", e2.message); }
