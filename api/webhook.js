@@ -92,14 +92,14 @@ ZORUNLU FORMAT (tam olarak boyle yaz, baska turlu degil):
 FIRMA:Musteri
 KALEM:Urun adi|Miktar|Birim|ListeFiyati|NetFiyat|Toplam
 [/TEKLIF]
-Fiyat teklifinizi hazirladim, PDF olarak gonderiyorum.
+Fiyat teklifinizi gonderdim.
 
 ORNEK DOGRU CEVAP (1500mt Turuncu 14mm 6Atu boru icin):
 [TEKLIF]
 FIRMA:Musteri
 KALEM:Turuncu Kangal Boru 14mm 6Atu|1500|MT|4.52|2.49|3735.00
 [/TEKLIF]
-Fiyat teklifinizi hazirladim, PDF olarak gonderiyorum.
+Fiyat teklifinizi gonderdim.
 
 ORNEK YANLIS CEVAP (YAPMA):
 "Fiyat teklifinizi hazirladim, PDF olarak gonderiyorum." (teklif blogu olmadan bu cumlei yazma)
@@ -154,6 +154,14 @@ SATIS KURALLARI:
 
 const KARSILAMA_METNI =
   "Merhaba! Guley Plastik'e hos geldiniz. Urun kataloglarimizi gonderdim. Tum urunlerimiz K.maras Ekinozu'nden fabrikadan direkt, %45 iskontolu toptanci fiyatlarimizla sunulmaktadir. Herhangi bir urun icin fiyat teklifi almak ister misiniz? Lutfen firma adinizi ve ihtiyacinizi belirtin.";
+
+const TEKLIF_SONRASI_MESAJ =
+  "Size ozel fiyat teklifinizi gonderdim.\n\n" +
+  "Fabrikadan direkt satis, %45 iskontolu net fiyatlar.\n" +
+  "Toplu alimda ekstra indirim mumkun.\n" +
+  "Tum Turkiye'ye hizli kargo.\n" +
+  "1. sinif kaliteli uretim, Guley Plastik guvencesiyle.\n\n" +
+  "Kac adet / kac top dusunuyorsunuz? Miktari bildirin, size en uygun fiyati cikarayim.";
 
 const OWNER_PHONE = "905373630608"; // Recep Bektas - bot bildirimlerini alir
 
@@ -918,6 +926,8 @@ async function handleWebhook(body, query, headers) {
           const pdfUrl = await uploadPDF(pdfBuffer, filename);
           await saveQuote(phone, ilkQuote.firma, ilkQuote.items.reduce((sum, i) => sum + i.total, 0), pdfUrl);
           await sendDocumentWithRetry(phone, pdfUrl, filename);
+          await sleep(2000);
+          try { await sendWhatsApp(phone, TEKLIF_SONRASI_MESAJ); } catch (e) { console.error("Teklif sonrasi mesaj hatasi:", e.message); }
           pdfSent = true;
         } catch (pdfErr) {
           console.error("Ilk temas PDF hatasi:", pdfErr.message);
@@ -925,7 +935,7 @@ async function handleWebhook(body, query, headers) {
           try { await sendWhatsApp(phone, "Fiyat teklifinizi hazirladim ancak PDF gonderiminde sorun olustu. Lutfen su numarayi arayin: +90 537 363 06 08"); } catch {}
         }
         const pdfResponseText = pdfSent
-          ? "Fiyat teklifinizi gonderdim. Baska bir urun veya baska miktarlar icin yardimci olabilirim."
+          ? TEKLIF_SONRASI_MESAJ
           : KARSILAMA_METNI;
         if (lockId) {
           try { await supabase.from("conversations").update({ bot_response: pdfResponseText }).eq("id", lockId); } catch { await saveConversation(phone, message, pdfResponseText); }
@@ -965,7 +975,9 @@ async function handleWebhook(body, query, headers) {
         const pdfUrl = await uploadPDF(pdfBuffer, filename);
         await saveQuote(phone, quoteData.firma, quoteData.items.reduce((s, i) => s + i.total, 0), pdfUrl);
         await sendDocumentWithRetry(phone, pdfUrl, filename);
-        await saveConversation(phone, message, "Fiyat teklifinizi gonderdim. Baska urun veya miktar icin yardimci olabilirim.");
+        await sleep(2000);
+        try { await sendWhatsApp(phone, TEKLIF_SONRASI_MESAJ); } catch (e) { console.error("Teklif sonrasi mesaj hatasi:", e.message); }
+        await saveConversation(phone, message, TEKLIF_SONRASI_MESAJ);
       } catch (pdfErr) {
         console.error("PDF hatasi:", pdfErr.message);
         await notifyOwner("PDF gonderilemedi! Musteri: " + phone + " | Firma: " + quoteData.firma + " | Hata: " + pdfErr.message.slice(0, 80));
