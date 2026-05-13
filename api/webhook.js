@@ -604,7 +604,11 @@ function programmaticQuote(message) {
     const hasSizeMM = /\d+\s*mm/.test(s);
     const hasAtuStr = /\d+\s*atu|atu\s*\d+/.test(s);
     const hasBoruRenk = /siyah|mavi|turuncu/.test(s);
-    const looksLikeBoru = /boru/.test(s) || (hasSizeMM && (hasAtuStr || hasBoruRenk));
+    // "14 luk", "16 lik", "18 lik", "20 lik", "25 lik" gibi Turkce ekli cap ifadeleri
+    const hasBoruEkliCap = /\b(14|16|18|20|25)\s*['']?\s*(lu[ck]|li[ck]|luk|lik|lic|luc)\b/.test(s);
+    // Sadece cap sayisi yazilmis: "14", "16", "18", "20", "25"
+    const hasSadeceCap = /^(14|16|18|20|25)$/.test(s.trim());
+    const looksLikeBoru = /boru/.test(s) || (hasSizeMM && (hasAtuStr || hasBoruRenk)) || hasBoruEkliCap || hasSadeceCap;
 
     // AD urun anahtar kelimeleri - miktar birimi olmasa da devam et
     const hasAdUrunKeyword = /derin\s*kasa|gecmeli|norm\s*kasa|norm\s*buat|kapakli|kapaksiz|bombeli|luks\s*buat|tunel\s*buat|beton\s*buat|\btakoz\b|\bdubel\b|\bsigorta\b|\bduy\b/.test(s);
@@ -628,7 +632,10 @@ function programmaticQuote(message) {
 
     // Boru tespiti: "boru" kelimesi VEYA mm + (atu veya renk) kombinasyonu
     if (looksLikeBoru) {
-      const sizeM = s.match(/(\d+)\s*mm/);
+      // Cap tespiti: "14mm", "14 luk", "14 lik", "14", "25 lik" vb.
+      const sizeM = s.match(/(\d+)\s*mm/) ||
+                    s.match(/\b(14|16|18|20|25)\s*['']?\s*(?:lu[ck]|li[ck]|luk|lik|lic|luc)\b/) ||
+                    (hasSadeceCap ? s.match(/\b(14|16|18|20|25)\b/) : null);
       // "10 atu" ve "atu 10" formatlarinin ikisini de destekle
       const atuM1 = s.match(/(\d+)\s*atu/);
       const atuM2 = s.match(/atu\s*(\d+)/);
