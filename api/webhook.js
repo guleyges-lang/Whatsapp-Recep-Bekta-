@@ -918,6 +918,15 @@ async function handleWebhook(body, query, headers) {
   const hasMiktar = /\d+\s*(mt|metre|m(?!\w)|adet|ad(?!\w)|top(?!\w))/i.test(message) ||
     (/\b\d{2,}\b/.test(message) && /derin\s*kasa|norm\s*kasa|norm\s*buat|gecmeli.*kasa|kapakli.*buat|kapaksiz.*buat|buat.*kapag|bombeli.*buat|tunel.*buat|beton.*buat|\btakoz\b|\bdubel\b|\bsigorta\b|tij.*duy|\bduy\b/i.test(message));
 
+  // Selamlama mesajlari: yeni veya eski musteri farketmez, katalog + karsilama gonder
+  const selamlama = /^(merhaba|selam|iyi gun|iyi aksam|iyi sabah|hayirli|as?salam|salam|hi|hello|hey|meraba|mrb|slm|selamun|nbr|nasilsiniz|nasılsınız)\b/i.test(message.trim());
+  if (selamlama && !fiyatTalebi) {
+    console.log("Selamlama tespit edildi, katalog gonderiliyor:", phone);
+    await sendKatalogAndGreeting(phone);
+    await saveConversation(phone, message, KARSILAMA_METNI);
+    return;
+  }
+
   // --- ILKK TEMAS: katalog hic gonderilmemisse ---
   const katalogGonderildi = await katalogGonderildiMi(phone);
   if (!katalogGonderildi) {
