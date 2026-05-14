@@ -570,22 +570,6 @@ async function sendImageWithRetry(phone, imageUrl, label) {
 }
 
 async function sendKatalogAndGreeting(phone) {
-  // Duplicate koruma: son 30 saniyede bu telefona herhangi bir kayit var mi?
-  try {
-    const otuzSaniyeOnce = new Date(Date.now() - 30 * 1000).toISOString();
-    const { count } = await supabase
-      .from("conversations")
-      .select("*", { count: "exact", head: true })
-      .eq("phone", phone)
-      .gte("created_at", otuzSaniyeOnce);
-    if ((count || 0) > 0) {
-      console.log("Son 30 saniyede kayit var, katalog tekrar gonderilmiyor:", phone);
-      return;
-    }
-  } catch (e) {
-    console.error("Duplicate kontrol hatasi:", e.message);
-  }
-
   console.log("Katalog gonderimi basliyor:", phone);
   await sendImageWithRetry(phone, KATALOG_URLS[0], "Gorsel1");
   await sleep(4000);
