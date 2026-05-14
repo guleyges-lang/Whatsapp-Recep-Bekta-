@@ -1017,7 +1017,15 @@ async function handleWebhook(body, query, headers) {
   } catch (aiErr) {
     console.error("AI hatasi:", aiErr.message);
     await notifyOwner("AI yanit veremedi! Musteri: " + phone + " | " + aiErr.message.slice(0, 80));
-    try { await sendWhatsApp(phone, "Mesajinizi aldim, en kisa surede donuyorum."); } catch {}
+    // AI cokse katalog + karsilama gonder, bos birakmaz
+    const katalogDurumu = await katalogGonderildiMi(phone);
+    if (!katalogDurumu) {
+      await sendKatalogAndGreeting(phone);
+      await saveConversation(phone, message, KARSILAMA_METNI);
+    } else {
+      try { await sendWhatsApp(phone, "Mesajinizi aldim, en kisa surede donuyorum."); } catch {}
+      await saveConversation(phone, message, "AI hatasi - manuel yanit gerekiyor");
+    }
     return;
   }
 
